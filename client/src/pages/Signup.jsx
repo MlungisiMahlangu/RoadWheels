@@ -40,21 +40,21 @@ const Signup = () => {
   };
 
   return (
-    <div className="relative min-h-[calc(100vh-72px)] flex items-center justify-end overflow-hidden">
+    <div className="relative h-[calc(100vh-72px)] flex items-center justify-end overflow-hidden">
       <img
-        src="/hero-car2.png"
+        src="/whiteBMW.png"
         alt=""
         className="absolute inset-0 w-full h-full object-cover"
       />
       <div className="absolute inset-0 bg-gradient-to-r from-black/20 via-black/10 to-black/40" />
 
-      <div className="relative w-full max-w-md mr-6 md:mr-20 my-12 bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl px-8 py-10">
-        <Link to="/" className="inline-block mb-10">
+      <div className="relative w-full max-w-md mx-4 sm:mx-0 sm:mr-6 md:mr-20 my-6 max-h-[calc(100vh-120px)] overflow-y-auto bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl px-6 sm:px-8 py-8">
+        <Link to="/" className="inline-block mb-6">
           <Logo className="h-9" />
         </Link>
 
         <h1 className="text-2xl font-bold mb-2">Create your account</h1>
-        <p className="text-[var(--color-text-muted)] mb-8">Sign up to start booking cars.</p>
+        <p className="text-[var(--color-text-muted)] mb-6">Sign up to start booking cars.</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -112,7 +112,7 @@ const Signup = () => {
           </button>
         </form>
 
-        <p className="text-center text-sm text-[var(--color-text-muted)] mt-8">
+        <p className="text-center text-sm text-[var(--color-text-muted)] mt-6">
           Already have an account?{' '}
           <Link to="/login" className="text-[var(--color-accent)] font-medium hover:underline">
             Log in

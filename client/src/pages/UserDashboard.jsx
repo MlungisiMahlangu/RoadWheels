@@ -36,11 +36,11 @@ const UserDashboard = () => {
   const active = bookings.find((b) => b.status === 'active');
   const totalTrips = bookings.filter((b) => b.status === 'completed').length;
 
-  if (loading) return <div className="max-w-6xl mx-auto px-6 py-24 text-center">Loading...</div>;
+  if (loading) return <div className="max-w-6xl mx-auto px-4 sm:px-6 py-24 text-center">Loading...</div>;
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-10">
-      <h1 className="text-3xl font-bold mb-1">Welcome back, {user?.name?.split(' ')[0]} 👋</h1>
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+      <h1 className="text-2xl sm:text-3xl font-bold mb-1">Welcome back, {user?.name?.split(' ')[0]} 👋</h1>
       <p className="text-[var(--color-text-muted)] mb-8">Here's what's happening with your rentals.</p>
 
       {/* Stat cards */}

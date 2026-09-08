@@ -1,19 +1,33 @@
 const express = require('express');
 const Car = require('../models/Car');
+const Booking = require('../models/Booking');
 const { protectedRoute, adminOnly } = require('../middleware/auth');
 const router = express.Router();
 
 //Get all cars (public , with optional filters; ?all=true for admin)
 router.get('/', async (req, res) => {
     try{
-        const { location, category, transmission, brand, fuelType, all } = req.query;
+        const { location, category, transmission, brand, fuelType, search, sort, all } = req.query;
         const filter = all === 'true' ? {} : { isAvailable: { $ne: false } };
         if (location) filter.location = location;
         if (category) filter.category = category;
         if (transmission) filter.transmission = transmission;
         if (brand) filter.brand = brand;
         if (fuelType) filter.fuelType = fuelType;
-        const cars = await Car.find(filter);
+        if (search) {
+            const pattern = new RegExp(search.trim(), 'i');
+            filter.$or = [{ brand: pattern }, { name: pattern }];
+        }
+
+        const sortOptions = {
+            'price-asc': { pricePerDay: 1 },
+            'price-desc': { pricePerDay: -1 },
+            'rating': { rating: -1 },
+            'newest': { createdAt: -1 },
+        };
+        const sortBy = sortOptions[sort] || { createdAt: -1 };
+
+        const cars = await Car.find(filter).sort(sortBy);
         res.json(cars);
     } catch(err){
         res.status(500).json({ message: 'Server error' , error: err.message });
@@ -26,6 +40,19 @@ router.get('/:id', async (req, res) => {
         const car = await Car.findById(req.params.id);
         if(!car) return res.status(404).json({ message: 'Car not found' });
         res.json(car);
+    } catch(err){
+        res.status(500).json({ message: 'Server error' , error: err.message });
+    }
+});
+
+// Get booked date ranges for a car (public — lets the booking page warn about taken dates)
+router.get('/:id/availability', async (req, res) => {
+    try{
+        const bookings = await Booking.find(
+            { car: req.params.id, status: { $in: ['pending', 'confirmed', 'active'] } },
+            'pickupDate returnDate'
+        );
+        res.json(bookings);
     } catch(err){
         res.status(500).json({ message: 'Server error' , error: err.message });
     }

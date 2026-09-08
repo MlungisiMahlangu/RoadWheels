@@ -15,6 +15,7 @@ const BookingConfirm = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [bookingRef, setBookingRef] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
 
   useEffect(() => {
@@ -43,7 +44,8 @@ const BookingConfirm = () => {
     setSubmitting(true);
     setError('');
     try {
-      await api.createBooking({ carId: id, pickupDate, returnDate });
+      const created = await api.createBooking({ carId: id, pickupDate, returnDate });
+      setBookingRef(created._id);
       setSuccess(true);
     } catch (err) {
       setError(err.message);
@@ -52,17 +54,22 @@ const BookingConfirm = () => {
     }
   };
 
-  if (loading) return <div className="max-w-3xl mx-auto px-6 py-24 text-center">Loading...</div>;
+  if (loading) return <div className="max-w-3xl mx-auto px-4 sm:px-6 py-24 text-center">Loading...</div>;
 
   if (success) {
     return (
-      <div className="max-w-lg mx-auto px-6 py-24 text-center">
+      <div className="max-w-lg mx-auto px-4 sm:px-6 py-16 sm:py-24 text-center">
         <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
           <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
         </div>
         <h1 className="text-2xl font-bold mb-3">Booking confirmed!</h1>
+        {bookingRef && (
+          <p className="text-sm font-mono font-medium text-[var(--color-text-muted)] mb-3">
+            Reference: RW-{bookingRef.slice(-8).toUpperCase()}
+          </p>
+        )}
         <p className="text-[var(--color-text-muted)] mb-8">
           Your {car.brand} {car.name} is booked from {new Date(pickupDate).toLocaleDateString()} to {new Date(returnDate).toLocaleDateString()}.
         </p>
@@ -77,8 +84,8 @@ const BookingConfirm = () => {
   }
 
   return (
-    <div className="max-w-lg mx-auto px-6 py-16">
-      <h1 className="text-2xl font-bold mb-8">Confirm your booking</h1>
+    <div className="max-w-lg mx-auto px-4 sm:px-6 py-10 sm:py-16">
+      <h1 className="text-2xl sm:text-3xl font-bold mb-6 sm:mb-8">Confirm your booking</h1>
 
       <div className="bg-white border border-[var(--color-border)] rounded-2xl overflow-hidden mb-6">
         <img src={car.images?.[0]} alt={car.name} className="w-full aspect-[16/9] object-cover" />

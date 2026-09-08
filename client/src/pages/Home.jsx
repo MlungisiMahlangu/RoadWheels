@@ -25,14 +25,14 @@ const Home = () => {
         />
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--color-bg)] via-transparent to-black/10 opacity-70" />
 
-        <div className="relative max-w-7xl mx-auto px-6 pt-40 pb-56">
-          <p className="text-[var(--color-accent)] font-semibold text-lg mb-3">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 pt-32 sm:pt-40 pb-44 sm:pb-56">
+          <p className="text-[var(--color-accent)] font-semibold text-base sm:text-lg mb-3">
             Need a ride? No stress, we got you.
           </p>
-          <h1 className="text-5xl md:text-6xl font-bold leading-tight mb-6 max-w-2xl drop-shadow-sm">
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-tight mb-6 max-w-2xl drop-shadow-sm">
             Your next ride, on your terms.
           </h1>
-          <p className="text-lg text-[var(--color-text-muted)] mb-8 max-w-md">
+          <p className="text-base sm:text-lg text-[var(--color-text-muted)] mb-8 max-w-md">
             Browse, book, and hit the road in minutes. No hidden fees, no hassle.
           </p>
           <Link
@@ -45,18 +45,18 @@ const Home = () => {
       </section>
 
       {/* Trust bar — unchanged */}
-      <section className="max-w-7xl mx-auto px-6 -mt-16 relative z-10">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 -mt-12 sm:-mt-16 relative z-10">
         <div className="bg-white rounded-3xl shadow-xl grid grid-cols-3 divide-x divide-[var(--color-border)] overflow-hidden">
-          <div className="text-center py-8">
-            <p className="text-3xl font-bold">500+</p>
+          <div className="text-center py-6 sm:py-8">
+            <p className="text-2xl sm:text-3xl font-bold">500+</p>
             <p className="text-sm text-[var(--color-text-muted)] mt-1">Cars available</p>
           </div>
-          <div className="text-center py-8">
-            <p className="text-3xl font-bold">10k+</p>
+          <div className="text-center py-6 sm:py-8">
+            <p className="text-2xl sm:text-3xl font-bold">10k+</p>
             <p className="text-sm text-[var(--color-text-muted)] mt-1">Happy renters</p>
           </div>
-          <div className="text-center py-8">
-            <p className="text-3xl font-bold">4.8★</p>
+          <div className="text-center py-6 sm:py-8">
+            <p className="text-2xl sm:text-3xl font-bold">4.8★</p>
             <p className="text-sm text-[var(--color-text-muted)] mt-1">Average rating</p>
           </div>
         </div>
@@ -64,10 +64,10 @@ const Home = () => {
 
       {/* Featured Cars */}
       {featuredCars.length > 0 && (
-        <section className="max-w-7xl mx-auto px-6 py-24">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
           <div className="flex items-end justify-between mb-10">
             <div>
-              <h2 className="text-3xl font-bold mb-2">Featured cars</h2>
+              <h2 className="text-2xl sm:text-3xl font-bold mb-2">Featured cars</h2>
               <p className="text-[var(--color-text-muted)]">A few of our most popular rides right now</p>
             </div>
             <Link to="/browse" className="text-[var(--color-accent)] font-semibold hover:underline hidden sm:block">
@@ -81,8 +81,8 @@ const Home = () => {
       )}
 
       {/* How it works — unchanged */}
-      <section className="max-w-7xl mx-auto px-6 py-24">
-        <h2 className="text-3xl font-bold text-center mb-16">How it works</h2>
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
+        <h2 className="text-2xl sm:text-3xl font-bold text-center mb-10 sm:mb-16">How it works</h2>
         <div className="grid md:grid-cols-3 gap-10">
           {[
             { step: '01', title: 'Search', desc: 'Pick your location and dates to see available cars.' },
@@ -101,8 +101,8 @@ const Home = () => {
 
     {/* FAQ */}
     <section className="bg-white border-t border-[var(--color-border)]">
-    <div className="max-w-3xl mx-auto px-6 py-24">
-        <h2 className="text-3xl font-bold text-center mb-12">Frequently asked questions</h2>
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
+        <h2 className="text-2xl sm:text-3xl font-bold text-center mb-8 sm:mb-12">Frequently asked questions</h2>
         <div className="space-y-3">
         {[
             { q: 'What do I need to rent a car?', a: 'A valid driver\'s license, a form of ID, and a card for the security deposit.' },
@@ -124,8 +124,8 @@ const Home = () => {
 
       {/* Why Choose Us */}
       <section className="bg-white border-y border-[var(--color-border)]">
-        <div className="max-w-7xl mx-auto px-6 py-24">
-          <h2 className="text-3xl font-bold text-center mb-16">Why choose RoadWheels</h2>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
+          <h2 className="text-2xl sm:text-3xl font-bold text-center mb-10 sm:mb-16">Why choose RoadWheels</h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
             {[
               { icon: '🛡️', title: 'Fully Insured', desc: 'Every rental is covered, so you can drive with peace of mind.' },
@@ -146,8 +146,8 @@ const Home = () => {
       </section>
 
       {/* Testimonials */}
-      <section className="max-w-7xl mx-auto px-6 py-24">
-        <h2 className="text-3xl font-bold text-center mb-16">What renters are saying</h2>
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
+        <h2 className="text-2xl sm:text-3xl font-bold text-center mb-10 sm:mb-16">What renters are saying</h2>
         <div className="grid md:grid-cols-3 gap-6">
           {[
             { name: 'Thabo M.', quote: 'Booking took less than five minutes and the car was spotless. Way smoother than other rental apps I\'ve tried.', rating: 5 },
@@ -165,9 +165,9 @@ const Home = () => {
 
       {/* Operating Hours & Locations */}
       <section className="bg-white border-y border-[var(--color-border)]">
-        <div className="max-w-7xl mx-auto px-6 py-24 grid md:grid-cols-2 gap-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24 grid md:grid-cols-2 gap-12">
           <div>
-            <h2 className="text-3xl font-bold mb-6">Operating hours</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold mb-6">Operating hours</h2>
             <div className="space-y-3">
               {[
                 { day: 'Monday – Friday', hours: '07:00 – 18:00' },
@@ -187,7 +187,7 @@ const Home = () => {
           </div>
 
           <div>
-            <h2 className="text-3xl font-bold mb-6">Our locations</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold mb-6">Our locations</h2>
             <div className="space-y-4">
               {['Johannesburg', 'Pretoria', 'Cape Town', 'Durban'].map((city) => (
                 <div key={city} className="flex items-center gap-3 text-sm">
@@ -202,7 +202,7 @@ const Home = () => {
       </section>
 
       {/* Closing CTA */}
-      <section className="max-w-7xl mx-auto px-6 py-24 text-center">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24 text-center">
         <h2 className="text-3xl md:text-4xl font-bold mb-4">Ready to hit the road?</h2>
         <p className="text-[var(--color-text-muted)] mb-8 max-w-md mx-auto">
           Browse our full fleet and find the perfect car for your next trip.

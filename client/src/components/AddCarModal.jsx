@@ -73,8 +73,8 @@ const AddCarModal = ({ car, onClose, onSaved }) => {
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-6" onClick={onClose}>
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6" onClick={onClose}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 sm:p-6" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-bold">{title}</h2>
             <button onClick={onClose} className="text-2xl leading-none text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
@@ -101,13 +101,13 @@ const AddCarModal = ({ car, onClose, onSaved }) => {
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
               <Field label="Price/day (R)" type="number" value={form.pricePerDay} onChange={update('pricePerDay')} required />
               <Field label="Seats" type="number" value={form.seats} onChange={update('seats')} required />
               <Field label="Year" type="number" value={form.year} onChange={update('year')} required />
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
               <Select label="Category" value={form.category} onChange={update('category')} options={CATEGORIES} />
               <Select label="Transmission" value={form.transmission} onChange={update('transmission')} options={['Manual', 'Automatic']} />
               <Select label="Fuel Type" value={form.fuelType} onChange={update('fuelType')} options={['Petrol', 'Diesel', 'Electric', 'Hybrid']} />

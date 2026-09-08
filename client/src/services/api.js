@@ -11,6 +11,16 @@ const request = async (endpoint, options = {}) => {
     };
 
     const res = await fetch(`${API_URL}${endpoint}`, { ...options, headers });
+
+    // Expired/invalid session: clear credentials and send the user to login.
+    // Login/signup are excluded so bad-credential errors still display on the form.
+    if (res.status === 401 && token && !endpoint.startsWith('/auth/login') && !endpoint.startsWith('/auth/signup')) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+        throw new Error('Session expired — please log in again');
+    }
+
     const data = await res.json();
 
     if (!res.ok) throw new Error(data.message || 'Something went wrong');
@@ -38,6 +48,15 @@ export const api = {
     getMyBookings: () => request('/bookings/mybookings'),
     getAllBookings: () => request('/bookings'),
     updateBookingStatus: (id, status) => request(`/bookings/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+    cancelBooking: (id) => request(`/bookings/${id}/cancel`, { method: 'PUT' }),
+
+    // Availability
+    getCarAvailability: (id) => request(`/cars/${id}/availability`),
+
+    // Reviews
+    getCarReviews: (carId) => request(`/reviews/car/${carId}`),
+    getMyReviews: () => request('/reviews/mine'),
+    createReview: (body) => request('/reviews', { method: 'POST', body: JSON.stringify(body) }),
 
     // Admin — Users
     getUsers: () => request('/auth/users'),

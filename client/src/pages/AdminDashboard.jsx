@@ -65,6 +65,7 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [actionError, setActionError] = useState('');
 
   // Modals
   const [addCarOpen, setAddCarOpen] = useState(false);
@@ -121,7 +122,8 @@ const AdminDashboard = () => {
       setDeleteTarget(null);
       fetchData();
     } catch (err) {
-      alert('Failed to remove car: ' + err.message);
+      setDeleteTarget(null);
+      setActionError('Failed to remove car: ' + err.message);
     }
   };
 
@@ -132,7 +134,10 @@ const AdminDashboard = () => {
       setStatusChange(null);
       fetchData();
     } catch (err) {
-      alert('Failed to update status: ' + err.message);
+      setStatusChange(null);
+      setActionError('Failed to update status: ' + err.message);
+      // Re-fetch so the table reflects the server's true status
+      fetchData();
     }
   };
 
@@ -238,8 +243,8 @@ const AdminDashboard = () => {
       {/* ─── MAIN CONTENT ─── */}
       <div className="flex-1 flex flex-col min-w-0 md:ml-64">
         {/* Top bar */}
-        <header className="sticky top-0 z-30 bg-white border-b border-[var(--color-border)] px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-30 bg-white border-b border-[var(--color-border)] px-4 sm:px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               onClick={() => setSidebarOpen(true)}
               className="md:hidden p-2 -ml-2 rounded-lg hover:bg-gray-100 transition-colors"
@@ -248,7 +253,7 @@ const AdminDashboard = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <h1 className="text-lg font-bold">{pageTitle}</h1>
+            <h1 className="text-lg font-bold truncate">{pageTitle}</h1>
           </div>
           <div className="flex items-center gap-3">
             {tab === 'cars' && (
@@ -273,7 +278,7 @@ const AdminDashboard = () => {
               </button>
 
               {notifOpen && (
-                <div className="absolute right-0 mt-2 w-72 bg-white border border-[var(--color-border)] rounded-xl shadow-lg z-40 overflow-hidden">
+                <div className="absolute right-0 mt-2 w-72 max-w-[calc(100vw-2rem)] bg-white border border-[var(--color-border)] rounded-xl shadow-lg z-40 overflow-hidden">
                   <div className="px-4 py-3 border-b border-[var(--color-border)] font-medium text-sm">Pending Bookings</div>
                   {bookings.filter((b) => b.status === 'pending').slice(0, 5).length === 0 ? (
                     <p className="px-4 py-6 text-center text-sm text-[var(--color-text-muted)]">Nothing needs your attention.</p>
@@ -299,7 +304,13 @@ const AdminDashboard = () => {
         </header>
 
         {/* Page content */}
-        <div className="flex-1 p-6 overflow-y-auto">
+        <div className="flex-1 p-4 sm:p-6 overflow-y-auto">
+          {actionError && (
+            <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm flex items-center justify-between gap-3">
+              <span>{actionError}</span>
+              <button onClick={() => setActionError('')} className="text-lg leading-none shrink-0" aria-label="Dismiss">×</button>
+            </div>
+          )}
           {loading ? (
             <div className="flex items-center justify-center py-32">
               <div className="w-8 h-8 border-3 border-gray-200 border-t-[var(--color-accent)] rounded-full animate-spin" />
@@ -324,7 +335,8 @@ const AdminDashboard = () => {
                 {bookings.slice(0, 5).length === 0 ? (
                   <p className="px-5 py-8 text-center text-sm text-[var(--color-text-muted)]">No bookings yet.</p>
                 ) : (
-                  <table className="w-full text-left">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[560px] text-left">
                     <thead className="bg-gray-50 text-xs text-[var(--color-text-muted)] uppercase tracking-wider">
                       <tr>
                         <th className="px-5 py-3">Customer</th>
@@ -348,6 +360,7 @@ const AdminDashboard = () => {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 )}
               </div>
 
@@ -373,7 +386,8 @@ const AdminDashboard = () => {
                 <p className="text-sm text-[var(--color-text-muted)]">{cars.length} car{cars.length !== 1 ? 's' : ''} · {activeCars} available</p>
               </div>
               <div className="bg-white border border-[var(--color-border)] rounded-2xl overflow-hidden">
-                <table className="w-full text-left">
+                <div className="overflow-x-auto">
+                <table className="w-full min-w-[680px] text-left">
                   <thead className="bg-gray-50 text-xs text-[var(--color-text-muted)] uppercase tracking-wider">
                     <tr>
                       <th className="px-5 py-3">Car</th>
@@ -420,6 +434,7 @@ const AdminDashboard = () => {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             </div>
 
@@ -450,7 +465,8 @@ const AdminDashboard = () => {
                 </div>
               </div>
               <div className="bg-white border border-[var(--color-border)] rounded-2xl overflow-hidden">
-                <table className="w-full text-left">
+                <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] text-left">
                   <thead className="bg-gray-50 text-xs text-[var(--color-text-muted)] uppercase tracking-wider">
                     <tr>
                       <th className="px-5 py-3">Customer</th>
@@ -476,8 +492,12 @@ const AdminDashboard = () => {
                         </td>
                         <td className="px-5 py-3 font-medium">R{b.totalPrice?.toLocaleString()}</td>
                         <td className="px-5 py-3">
-                          {b.status === 'completed' ? (
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize border ${STATUS_BADGE[b.status]}`}>
+                          {/* Terminal or expired bookings cannot be changed — render a static badge */}
+                          {b.status === 'completed' || new Date(b.returnDate) < new Date() ? (
+                            <span
+                              title={new Date(b.returnDate) < new Date() ? 'Rental period has ended — status is final' : undefined}
+                              className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize border ${STATUS_BADGE[b.status]}`}
+                            >
                               {b.status}
                             </span>
                           ) : (
@@ -498,6 +518,7 @@ const AdminDashboard = () => {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             </div>
           )}

@@ -31,7 +31,7 @@ const MessagesPanel = ({ onRead }) => {
 
   return (
     <div className="grid md:grid-cols-[1fr_1.3fr] gap-6">
-      <div className="bg-white border border-[var(--color-border)] rounded-2xl overflow-hidden divide-y divide-[var(--color-border)] max-h-[600px] overflow-y-auto">
+      <div className={`bg-white border border-[var(--color-border)] rounded-2xl overflow-hidden divide-y divide-[var(--color-border)] max-h-[600px] overflow-y-auto ${selected ? 'hidden md:block' : ''}`}>
         {messages.length === 0 ? (
           <p className="px-5 py-8 text-center text-sm text-[var(--color-text-muted)]">No messages yet.</p>
         ) : (
@@ -52,11 +52,17 @@ const MessagesPanel = ({ onRead }) => {
         )}
       </div>
 
-      <div className="bg-white border border-[var(--color-border)] rounded-2xl p-6">
+      <div className={`bg-white border border-[var(--color-border)] rounded-2xl p-6 ${selected ? '' : 'hidden md:block'}`}>
         {!selected ? (
           <p className="text-center text-sm text-[var(--color-text-muted)] py-16">Select a message to read it.</p>
         ) : (
           <>
+            <button
+              onClick={() => setSelected(null)}
+              className="md:hidden text-sm text-[var(--color-accent)] font-medium mb-4"
+            >
+              ← Back to messages
+            </button>
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="font-bold text-lg">{selected.name}</h3>

@@ -34,15 +34,15 @@ const handleConfirmSend = async () => {
 };
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-16">
-      <div className="text-center mb-14">
-        <h1 className="text-4xl font-bold mb-3">Get in touch</h1>
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 sm:py-16">
+      <div className="text-center mb-10 sm:mb-14">
+        <h1 className="text-3xl sm:text-4xl font-bold mb-3">Get in touch</h1>
         <p className="text-[var(--color-text-muted)] max-w-lg mx-auto">
           Have a question about a booking, a car, or anything else? We're happy to help.
         </p>
       </div>
 
-      <div className="grid sm:grid-cols-3 gap-6 mb-14">
+      <div className="grid sm:grid-cols-3 gap-4 sm:gap-6 mb-10 sm:mb-14">
         <div className="bg-white border border-[var(--color-border)] rounded-2xl p-6 text-center">
           <div className="w-12 h-12 rounded-xl bg-[var(--color-accent)]/10 flex items-center justify-center text-xl mx-auto mb-3">📞</div>
           <h3 className="font-semibold mb-1">Call Us</h3>

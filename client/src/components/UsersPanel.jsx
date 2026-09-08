@@ -56,7 +56,8 @@ const UsersPanel = ({ bookings }) => {
             <div className="w-7 h-7 border-3 border-gray-200 border-t-[var(--color-accent)] rounded-full animate-spin" />
           </div>
         ) : (
-          <table className="w-full text-left">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-left">
             <thead className="bg-gray-50 text-xs text-[var(--color-text-muted)] uppercase tracking-wider">
               <tr>
                 <th className="px-5 py-3">User</th>
@@ -106,6 +107,7 @@ const UsersPanel = ({ bookings }) => {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

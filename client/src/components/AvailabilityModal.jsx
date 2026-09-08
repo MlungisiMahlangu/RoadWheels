@@ -20,8 +20,8 @@ const AvailabilityModal = ({ car, bookings, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-6">
-      <div className="bg-white rounded-2xl w-full max-w-md p-6">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6">
+      <div className="bg-white rounded-2xl w-full max-w-md p-4 sm:p-6">
         <div className="flex items-center justify-between mb-1">
           <h2 className="font-bold text-lg">{car.brand} {car.name}</h2>
           <button onClick={onClose} className="text-2xl leading-none text-[var(--color-text-muted)]">×</button>

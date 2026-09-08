@@ -20,6 +20,18 @@ router.post('/', protectedRoute, async (req, res) => {
             return res.status(400).json({ message: 'Return date must be after pickup date' });
         }
 
+        // Same-day bookings are fine, but the rental can't start in the past
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        if(pickup < todayStart){
+            return res.status(400).json({ message: 'Pickup date cannot be in the past' });
+        }
+
+        // Soft-deleted (removed) cars must not be bookable
+        if(car.isAvailable === false){
+            return res.status(400).json({ message: 'This car is no longer available for booking' });
+        }
+
         // Check for overlapping booking on this car (pending, confirmed or active)
         const overlapping = await Booking.findOne({
             car: carId,
@@ -45,12 +57,18 @@ router.post('/', protectedRoute, async (req, res) => {
     }
 });
 
-// Auto-complete: mark overdue confirmed/active bookings as completed
+// Auto-settle overdue bookings whenever they are fetched:
+// - confirmed/active rentals past their return date become completed
+// - pending requests whose rental window ended unapproved become cancelled
 const autoCompleteOverdue = async () => {
     const now = new Date();
     await Booking.updateMany(
         { status: { $in: ['confirmed', 'active'] }, returnDate: { $lt: now } },
         { $set: { status: 'completed' } }
+    );
+    await Booking.updateMany(
+        { status: 'pending', returnDate: { $lt: now } },
+        { $set: { status: 'cancelled' } }
     );
 };
 
@@ -80,8 +98,51 @@ router.get('/', protectedRoute, adminOnly, async (req, res) => {
 router.put('/:id/status', protectedRoute, adminOnly, async (req, res) => {
     try{
         const { status } = req.body;
-        const booking = await Booking.findByIdAndUpdate(req.params.id, { status }, { new: true });
+        const booking = await Booking.findById(req.params.id);
         if(!booking) return res.status(404).json({ message: 'Booking not found' });
+
+        const now = new Date();
+
+        // Once the rental window has ended the status is final —
+        // settle the booking to its terminal state and refuse the change
+        if(booking.returnDate < now){
+            const terminal = booking.status === 'pending' ? 'cancelled' : 'completed';
+            if(['pending', 'confirmed', 'active'].includes(booking.status) && booking.status !== terminal){
+                booking.status = terminal;
+                await booking.save();
+            }
+            return res.status(400).json({ message: 'The rental period for this booking has already ended — its status can no longer be changed' });
+        }
+
+        // A rental can only be marked active once the pickup date has arrived
+        if(status === 'active' && new Date(booking.pickupDate) > now){
+            return res.status(400).json({ message: 'This rental cannot start yet — the pickup date is still in the future' });
+        }
+
+        booking.status = status;
+        await booking.save();
+        res.json(booking);
+    } catch(err){
+        res.status(500).json({ message: 'Server error' , error: err.message });
+    }
+});
+
+// Cancel own booking (logged-in owner, before pickup)
+router.put('/:id/cancel', protectedRoute, async (req, res) => {
+    try{
+        const booking = await Booking.findById(req.params.id);
+        if(!booking) return res.status(404).json({ message: 'Booking not found' });
+
+        if(booking.user.toString() !== req.user.id){
+            return res.status(403).json({ message: 'You can only cancel your own bookings' });
+        }
+
+        if(!['pending', 'confirmed'].includes(booking.status)){
+            return res.status(400).json({ message: 'Only pending or confirmed bookings can be cancelled' });
+        }
+
+        booking.status = 'cancelled';
+        await booking.save();
         res.json(booking);
     } catch(err){
         res.status(500).json({ message: 'Server error' , error: err.message });

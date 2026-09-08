@@ -17,6 +17,7 @@ import AdminDashboard from './pages/AdminDashboard';
 function App() {
   const { pathname } = useLocation();
   const isAdmin = pathname.startsWith('/admin');
+  const isAuthPage = pathname === '/login' || pathname === '/signup';
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--color-bg)]">
@@ -37,7 +38,7 @@ function App() {
           <Route path="/admin" element={<AdminDashboard />} />
         </Routes>
       </main>
-      {!isAdmin && <Footer />}
+      {!isAdmin && !isAuthPage && <Footer />}
     </div>
   );
 }
