@@ -156,9 +156,9 @@ img { max-width: 100%; }
 .filter-panel { padding: 24px; position: sticky; top: 106px; }
 .filter-group { padding-block: 22px; border-top: 1px solid var(--color-border); }
 .filter-group:last-child { padding-bottom: 0; }
-.filter-group legend { float: left; width: 100%; margin-bottom: 14px; font-size: 11px; font-weight: 600; }
+.filter-group legend { width: 100%; margin-bottom: 14px; font-size: 11px; font-weight: 600; display: block; }
 .filter-option { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--color-text-muted); padding-block: 6px; cursor: pointer; }
-.filter-option input { accent-color: var(--color-accent); width: 15px; height: 15px; }
+.filter-option input { accent-color: var(--color-accent); width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; }
 .filter-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--color-border); border-radius: 50px; padding: 9px 17px; font-size: 11px; white-space: nowrap; transition: background .2s; }
 .filter-chip:hover { background: var(--color-soft); }
 .filter-chip.active { background: var(--color-ink); border-color: var(--color-ink); color: white; }
@@ -250,7 +250,7 @@ img { max-width: 100%; }
   .filter-panel { position: static; padding: 20px; }
   .browse-filters:not(.is-open) { display: none; }
   .filter-group { padding-block: 18px; }
-  .filter-group > div { display: flex; flex-wrap: wrap; gap: 6px 18px; clear: both; }
+  .filter-group > div { display: flex; flex-wrap: wrap; gap: 6px 18px; }
   .filter-group legend { margin-bottom: 10px; }
   .booking-panel { padding: 24px; }
   .account-nav { gap: 4px; margin-bottom: 26px; }
