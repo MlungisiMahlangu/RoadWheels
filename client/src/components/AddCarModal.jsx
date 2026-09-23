@@ -178,9 +178,9 @@ const AddCarModal = ({ car, onClose, onSaved }) => {
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-                <Field label="Price/day (R)" type="number" value={form.pricePerDay} onChange={update('pricePerDay')} required />
-                <Field label="Seats" type="number" value={form.seats} onChange={update('seats')} required />
-                <Field label="Year" type="number" value={form.year} onChange={update('year')} required />
+                <Field label="Price/day (R)" type="number" min="0.01" max="100000" step="0.01" value={form.pricePerDay} onChange={update('pricePerDay')} required />
+                <Field label="Seats" type="number" min="1" max="60" step="1" value={form.seats} onChange={update('seats')} required />
+                <Field label="Year" type="number" min="1950" max={new Date().getFullYear() + 2} step="1" value={form.year} onChange={update('year')} required />
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
@@ -194,7 +194,7 @@ const AddCarModal = ({ car, onClose, onSaved }) => {
                 <Field label="Location" value={form.location} onChange={update('location')} required />
               </div>
 
-              <Field label="Mileage (km)" type="number" value={form.mileage} onChange={update('mileage')} />
+              <Field label="Mileage (km)" type="number" min="0" max="2000000" step="1" value={form.mileage} onChange={update('mileage')} />
 
               <Field
                 label="Image URLs (comma-separated)"

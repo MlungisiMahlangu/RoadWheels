@@ -7,6 +7,7 @@ import ReviewModal from '../components/ReviewModal';
 import AccountNav from '../components/AccountNav';
 import Icon from '../components/Icon';
 import { today, formatDate } from '../services/rentalDates';
+import { bookingCalendar } from '../services/bookingCalendar';
 
 const STATUS_STYLES = {
   pending: 'bg-amber-50 text-amber-800 border-amber-200',
@@ -26,6 +27,16 @@ const STATUS_COPY = {
 const carName = (car) => car ? `${car.brand} ${car.name}` : 'Vehicle no longer listed';
 const imageFallback = (event) => {
   if (!event.currentTarget.src.endsWith('/placeholder-car.svg')) event.currentTarget.src = '/placeholder-car.svg';
+};
+const downloadCalendar = (booking) => {
+  const url = URL.createObjectURL(new Blob([bookingCalendar(booking)], { type: 'text/calendar;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `roadwheels-${booking._id.slice(-8)}.ics`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
 };
 
 const MyBookings = () => {
@@ -183,6 +194,7 @@ const MyBookings = () => {
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <div><p className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-muted)]">Booking total</p><p className="mt-1 text-2xl font-semibold tracking-tight">R{booking.totalPrice?.toLocaleString('en-ZA')}</p></div>
                     <div className="flex flex-wrap items-center gap-2">
+                      {['confirmed', 'active'].includes(booking.status) && <button type="button" onClick={() => downloadCalendar(booking)} className="btn-secondary inline-flex items-center gap-2"><Icon name="calendar" size={16} />Add to calendar</button>}
                       {['pending', 'confirmed'].includes(booking.status) && booking.pickupDate.slice(0, 10) > today() && (
                         <button type="button" disabled={cancelling} onClick={() => { setActionError(''); setCancelTarget(booking._id); }} className="min-h-11 rounded-full border border-red-200 px-5 py-2.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-wait disabled:opacity-50">Cancel booking</button>
                       )}
@@ -194,7 +206,7 @@ const MyBookings = () => {
                   </div>
                 </div>
               </div>
-              <div className="border-t border-[var(--color-border)] px-6 py-3 text-xs text-[var(--color-text-muted)] sm:px-7">{STATUS_COPY[booking.status]}</div>
+              <div className="border-t border-[var(--color-border)] px-6 py-3 text-xs text-[var(--color-text-muted)] sm:px-7">{STATUS_COPY[booking.status]} {['confirmed', 'active'].includes(booking.status) && 'Calendar files do not update automatically; check here for your latest booking details.'}</div>
             </article>
           ))}
         </div>

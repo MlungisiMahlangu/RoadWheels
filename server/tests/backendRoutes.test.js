@@ -4,10 +4,12 @@ const { readFileSync } = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const bookingDates = require('../routes/bookingDates');
+const errors = require('../middleware/errors');
 
 const USER_ID = '111111111111111111111111';
 const OTHER_USER_ID = '222222222222222222222222';
 const CAR_ID = 'aaaaaaaaaaaaaaaaaaaaaaaa';
+const BOOKING_ID = 'bbbbbbbbbbbbbbbbbbbbbbbb';
 const TODAY = '2026-09-19';
 const TOMORROW = '2026-09-20';
 const date = (value) => new Date(`${value}T00:00:00.000Z`);
@@ -58,7 +60,7 @@ function matches(record, filter = {}) {
 
 function booking(t, overrides = {}) {
     return {
-        _id: 'booking-1', user: USER_ID, car: CAR_ID, status: 'pending',
+        _id: BOOKING_ID, user: USER_ID, car: CAR_ID, status: 'pending',
         pickupDate: date(TODAY), returnDate: date('2026-09-22'),
         save: t.mock.fn(async function () { return this; }),
         ...overrides,
@@ -68,40 +70,94 @@ function booking(t, overrides = {}) {
 function fixture(t, options = {}) {
     const cars = options.cars || [{ _id: CAR_ID, name: 'Hatch [Sport]', brand: 'Road', pricePerDay: 350, isAvailable: true }];
     const bookings = options.bookings || [];
-    const user = Object.hasOwn(options, 'user') ? options.user : { _id: USER_ID, role: 'user', isSuspended: false };
-    const decoded = Object.hasOwn(options, 'decoded') ? options.decoded : { id: USER_ID, role: 'user' };
+    const reviews = options.reviews || [];
+    const user = Object.hasOwn(options, 'user') ? options.user : { _id: USER_ID, role: 'user', isSuspended: false, tokenVersion: 0 };
+    const decoded = Object.hasOwn(options, 'decoded') ? options.decoded : { id: USER_ID, role: 'user', ver: 0 };
+    const session = { testSession: true };
+    const operations = [];
+    const clone = (value) => Array.isArray(value) ? value.map(clone) : value ? { ...value } : value;
+    const query = (value) => {
+        const result = Promise.resolve(value);
+        for (const method of ['populate', 'select', 'sort']) result[method] = t.mock.fn(() => result);
+        result.session = t.mock.fn((actual) => { assert.equal(actual, session); return result; });
+        result.lean = t.mock.fn(async () => clone(value));
+        return result;
+    };
+    const mongoose = { connection: { transaction: t.mock.fn(async (callback, opts) => {
+        assert.deepEqual(opts.readConcern, { level: 'snapshot' });
+        assert.deepEqual(opts.writeConcern, { w: 'majority' });
+        assert.equal(opts.readPreference, 'primary');
+        assert.ok(opts.timeoutMS > 0 && opts.timeoutMS <= 30000);
+        return callback(session);
+    }) } };
     const User = {
         findById: t.mock.fn(() => ({ select: t.mock.fn(async () => user) })),
     };
     const jwt = { verify: t.mock.fn(() => decoded) };
-    const auth = loadModule('../middleware/auth.js', { jsonwebtoken: jwt, '../models/User': User });
+    const auth = loadModule('../middleware/auth.js', { jsonwebtoken: jwt, '../models/User': User, './errors': errors });
     const Car = {
-        findById: t.mock.fn(async (id) => cars.find((car) => car._id === id)),
-        find: t.mock.fn((filter) => ({
-            sort: t.mock.fn(async (order) => {
+        findById: t.mock.fn((id) => query(cars.find((car) => car._id === id))),
+        findOneAndUpdate: t.mock.fn((filter, update, opts) => {
+            assert.equal(opts.session, session);
+            operations.push(update.$inc ? 'car-lock' : 'car-rating');
+            const car = cars.find((item) => matches(item, filter));
+            if (car && update.$inc) car.reservationVersion = (car.reservationVersion || 0) + update.$inc.reservationVersion;
+            if (car && update.$set) Object.assign(car, update.$set);
+            return query(car);
+        }),
+        normalizeCategory: (value) => value === 'Minivan(MPV)' ? 'Minivan (MPV)' : value,
+        find: t.mock.fn((filter) => {
+            const selected = cars.filter((car) => matches(car, filter));
+            const result = query(selected);
+            result.sort.mock.mockImplementation((order) => {
                 const [key, direction] = Object.entries(order)[0];
-                return cars.filter((car) => matches(car, filter)).sort((a, b) => {
-                    return a[key] < b[key] ? -direction : a[key] > b[key] ? direction : 0;
-                });
-            }),
-        })),
+                selected.sort((a, b) => a[key] < b[key] ? -direction : a[key] > b[key] ? direction : 0);
+                return result;
+            });
+            return result;
+        }),
     };
     const Booking = {
         distinct: t.mock.fn(async (field, filter) => [...new Set(bookings.filter((item) => matches(item, filter)).map((item) => item[field]))]),
-        findOne: t.mock.fn(async (filter) => bookings.find((item) => matches(item, filter))),
-        findById: t.mock.fn(async (id) => bookings.find((item) => item._id === id)),
-        create: t.mock.fn(async (data) => {
-            const created = booking(t, data);
-            bookings.push(created);
+        findOne: t.mock.fn((filter) => {
+            operations.push('booking-overlap');
+            return query(bookings.find((item) => matches(item, filter)));
+        }),
+        findById: t.mock.fn((id) => query(bookings.find((item) => item._id === id))),
+        create: t.mock.fn(async (data, opts) => {
+            assert.equal(opts.session, session);
+            assert.ok(Array.isArray(data));
+            operations.push('booking-create');
+            const created = data.map((item) => booking(t, item));
+            bookings.push(...created);
             return created;
         }),
-        updateMany: t.mock.fn(async (filter, update) => {
-            bookings.filter((item) => matches(item, filter)).forEach((item) => Object.assign(item, update.$set));
+        findOneAndUpdate: t.mock.fn(async (filter, update) => {
+            if (options.beforeBookingUpdate) await options.beforeBookingUpdate();
+            const item = bookings.find((record) => matches(record, filter));
+            if (!item) return null;
+            Object.assign(item, update.$set);
+            return clone(item);
         }),
-        find: t.mock.fn((filter) => {
-            const result = Promise.resolve(bookings.filter((item) => matches(item, filter)));
-            result.populate = () => result;
-            return result;
+        updateMany: t.mock.fn(async () => assert.fail('GET must never write lifecycle status')),
+        find: t.mock.fn((filter) => query(bookings.filter((item) => matches(item, filter)))),
+    };
+    const Review = {
+        findById: t.mock.fn((id) => query(reviews.find((item) => item._id === id))),
+        findOne: t.mock.fn((filter) => query(reviews.find((item) => matches(item, filter)))),
+        find: t.mock.fn((filter) => query(reviews.filter((item) => matches(item, filter)))),
+        create: t.mock.fn(async (data, opts) => {
+            assert.equal(opts.session, session);
+            assert.ok(Array.isArray(data));
+            operations.push('review-create');
+            const created = data.map((item) => ({ _id: 'cccccccccccccccccccccccc', ...item }));
+            reviews.push(...created);
+            return created;
+        }),
+        aggregate: t.mock.fn((pipeline) => {
+            operations.push('review-aggregate');
+            const selected = reviews.filter((item) => matches(item, pipeline[0].$match));
+            return query([{ avgRating: selected.reduce((sum, item) => sum + item.rating, 0) / selected.length }]);
         }),
     };
     const express = {
@@ -115,17 +171,18 @@ function fixture(t, options = {}) {
         },
     };
     const dependencies = {
-        express, '../models/Car': Car, '../models/Booking': Booking,
-        '../middleware/auth': auth, './bookingDates': bookingDates,
+        express, mongoose, '../models/Car': Car, '../models/Booking': Booking, '../models/Review': Review,
+        '../middleware/auth': auth, '../middleware/errors': errors, './bookingDates': bookingDates,
     };
     const routers = {
         cars: loadModule('../routes/carRoutes.js', dependencies),
         bookings: loadModule('../routes/bookingRoutes.js', dependencies),
+        reviews: loadModule('../routes/reviewRoutes.js', dependencies),
     };
     async function request(resource, method, routePath, overrides = {}) {
         const route = routers[resource].routes.find((item) => item.method === method && item.path === routePath);
         assert.ok(route, 'Route must exist');
-        const req = { headers: { authorization: 'Bearer valid-token' }, query: {}, body: {}, params: { id: 'booking-1' }, ...overrides };
+        const req = { headers: { authorization: 'Bearer valid-token' }, query: {}, body: {}, params: { id: BOOKING_ID }, ...overrides };
         const res = {
             statusCode: 200,
             status(code) { this.statusCode = code; return this; },
@@ -133,15 +190,17 @@ function fixture(t, options = {}) {
         };
         for (const handler of route.handlers) {
             let next = false;
-            await handler(req, res, () => { next = true; });
+            let failure;
+            await handler(req, res, (err) => { next = true; failure = err; });
+            if (failure) { errors.errorHandler(failure, req, res, () => {}); break; }
             if (!next) break;
         }
         return { ...res, req };
     }
-    return { request, Car, Booking, User, jwt, user, cars, bookings };
+    return { request, Car, Booking, Review, User, jwt, user, cars, bookings, reviews, session, operations, mongoose };
 }
 
-const admin = () => ({ _id: USER_ID, role: 'admin', isSuspended: false });
+const admin = () => ({ _id: USER_ID, role: 'admin', isSuspended: false, tokenVersion: 0 });
 const dates = { pickupDate: TODAY, returnDate: TOMORROW };
 const invalidDatePairs = [
     ['missing both', {}],
@@ -171,6 +230,8 @@ for (const [label, input] of invalidDatePairs) {
         const res = await f.request('bookings', 'post', '/', { body: { carId: CAR_ID, ...input } });
         assert.equal(res.statusCode, 400);
         assert.equal(f.Car.findById.mock.callCount(), 0);
+        assert.equal(f.Car.findOneAndUpdate.mock.callCount(), 0);
+        assert.equal(f.mongoose.connection.transaction.mock.callCount(), 0);
         assert.equal(f.Booking.findOne.mock.callCount(), 0);
         assert.equal(f.Booking.create.mock.callCount(), 0);
     });
@@ -227,6 +288,8 @@ test('car list preserves scalar filters, availability and sort choices', async (
     }
     const f = fixture(t, { cars: [{ _id: 'removed', isAvailable: false }, { _id: 'listed', isAvailable: true }] });
     assert.deepEqual((await f.request('cars', 'get', '/')).body.map((car) => car._id), ['listed']);
+    assert.equal((await f.request('cars', 'get', '/', { query: { all: 'true' } })).statusCode, 403);
+    f.user.role = 'admin';
     assert.equal((await f.request('cars', 'get', '/', { query: { all: 'true' } })).body.length, 2);
 });
 
@@ -245,6 +308,7 @@ test('date-filtered car list excludes only overlapping pending/confirmed/active 
         status: { $in: ['pending', 'confirmed', 'active'] },
         pickupDate: { $lt: date(TOMORROW) }, returnDate: { $gt: date(TODAY) },
     }]);
+    f.user.role = 'admin';
     const all = await f.request('cars', 'get', '/', { query: { ...dates, all: 'true' } });
     assert.deepEqual(all.body.map((car) => car._id), ['cancelled', 'completed', 'ends-at-pickup', 'starts-at-return', 'free', 'removed']);
 });
@@ -278,7 +342,8 @@ for (const status of ['pending', 'confirmed', 'active']) {
             for (const user of [USER_ID, OTHER_USER_ID]) {
                 const f = fixture(t, { bookings: [booking(t, { status, user, pickupDate: date(pickupDate), returnDate: date(returnDate) })] });
                 const res = await f.request('bookings', 'post', '/', { body: { carId: CAR_ID, pickupDate: '2026-09-20', returnDate: '2026-09-22' } });
-                assert.equal(res.statusCode, 400);
+                assert.equal(res.statusCode, 409);
+                assert.equal(res.body.code, 'BOOKING_CONFLICT');
                 assert.match(res.body.message, user === USER_ID ? /already have a booking/ : /already booked/);
                 assert.equal(f.Booking.create.mock.callCount(), 0);
             }
@@ -296,9 +361,14 @@ test('valid booking accepts adjacent ranges, other cars and terminal bookings; c
     const res = await f.request('bookings', 'post', '/', { body: { carId: CAR_ID, pickupDate: TODAY, returnDate: '2026-09-22', totalPrice: 1, status: 'active' } });
     assert.equal(res.statusCode, 201);
     assert.equal(res.body.status, 'pending');
-    assert.deepEqual(f.Booking.create.mock.calls[0].arguments[0], {
+    assert.deepEqual(f.Booking.create.mock.calls[0].arguments, [[{
         user: USER_ID, car: CAR_ID, pickupDate: date(TODAY), returnDate: date('2026-09-22'), totalPrice: 1050,
-    });
+    }], { session: f.session }]);
+    assert.deepEqual(f.operations, ['car-lock', 'booking-overlap', 'booking-create']);
+    assert.equal(f.Booking.findOne.mock.calls[0].result.session.mock.calls[0].arguments[0], f.session);
+    assert.deepEqual(f.Car.findOneAndUpdate.mock.calls[0].arguments, [
+        { _id: CAR_ID, isAvailable: true }, { $inc: { reservationVersion: 1 } }, { session: f.session, new: true },
+    ]);
     assert.deepEqual(f.Booking.findOne.mock.calls[0].arguments[0], {
         car: CAR_ID, status: { $in: ['pending', 'confirmed', 'active'] },
         pickupDate: { $lt: date('2026-09-22') }, returnDate: { $gt: date(TODAY) },
@@ -327,7 +397,8 @@ for (const from of Object.keys(transitions)) {
             const allowed = transitions[from].includes(to);
             assert.equal(res.statusCode, allowed ? 200 : 400, `${from} -> ${JSON.stringify(to)}`);
             assert.equal(item.status, allowed ? to : from);
-            assert.equal(item.save.mock.callCount(), allowed ? 1 : 0);
+            assert.equal(item.save.mock.callCount(), 0);
+            assert.equal(f.Booking.findOneAndUpdate.mock.callCount(), allowed ? 1 : 0);
         }
     });
 }
@@ -344,29 +415,33 @@ test('activation and completion cannot precede the South African pickup day', as
     }
 });
 
-test('overdue status requests preserve automatic settlement without reopening terminal bookings', async (t) => {
+test('overdue status requests return 400 without writing or reopening terminal bookings', async (t) => {
     for (const returnDate of [date('2026-09-18'), date(TODAY)]) {
         for (const status of Object.keys(transitions)) {
             const item = booking(t, { status, pickupDate: date('2026-09-17'), returnDate });
             const f = fixture(t, { user: admin(), bookings: [item] });
             const res = await f.request('bookings', 'put', '/:id/status', { body: { status: 'confirmed' } });
             assert.equal(res.statusCode, 400);
-            assert.equal(item.status, status === 'pending' ? 'cancelled' : status === 'confirmed' || status === 'active' ? 'completed' : status);
-            assert.equal(item.save.mock.callCount(), ['pending', 'confirmed', 'active'].includes(status) ? 1 : 0);
+            assert.equal(item.status, status);
+            assert.equal(item.save.mock.callCount(), 0);
+            assert.equal(f.Booking.findOneAndUpdate.mock.callCount(), 0);
         }
     }
 });
 
-test('both booking lists still settle overdue rentals and unapproved requests', async (t) => {
+test('both booking lists project effective statuses without changing stored rentals', async (t) => {
     for (const routePath of ['/', '/mybookings']) {
         const expired = Object.keys(transitions).map((status) => booking(t, { status, returnDate: date(TODAY) }));
         const future = booking(t, { status: 'confirmed', returnDate: date(TOMORROW) });
         const f = fixture(t, { bookings: [...expired, future], ...(routePath === '/' ? { user: admin() } : {}) });
         const res = await f.request('bookings', 'get', routePath);
         assert.equal(res.statusCode, 200);
-        assert.deepEqual(expired.map((item) => item.status), ['cancelled', 'completed', 'completed', 'completed', 'cancelled']);
+        assert.deepEqual(res.body.map((item) => item.status), ['cancelled', 'completed', 'completed', 'completed', 'cancelled', 'confirmed']);
+        assert.deepEqual(expired.map((item) => item.status), Object.keys(transitions));
         assert.equal(future.status, 'confirmed');
-        assert.equal(f.Booking.updateMany.mock.callCount(), 2);
+        assert.equal(f.Booking.updateMany.mock.callCount(), 0);
+        assert.equal(f.Booking.findOneAndUpdate.mock.callCount(), 0);
+        assert.equal(f.Booking.find.mock.calls[0].result.lean.mock.callCount(), 1);
     }
 });
 
@@ -379,7 +454,8 @@ test('owners may cancel pending/confirmed bookings only before pickup', async (t
             const allowed = pickupDate > date(TODAY);
             assert.equal(res.statusCode, allowed ? 200 : 400);
             assert.equal(item.status, allowed ? 'cancelled' : status);
-            assert.equal(item.save.mock.callCount(), allowed ? 1 : 0);
+            assert.equal(item.save.mock.callCount(), 0);
+            assert.equal(f.Booking.findOneAndUpdate.mock.callCount(), allowed ? 1 : 0);
         }
     }
 });
@@ -447,13 +523,13 @@ test('valid tokens cannot access protected routes after account deletion or susp
 });
 
 test('auth refreshes role and suspension on every request', async (t) => {
-    const f = fixture(t, { decoded: { id: USER_ID, role: 'admin' } });
+    const f = fixture(t, { decoded: { id: USER_ID, role: 'admin', ver: 0 } });
     assert.equal((await f.request('bookings', 'get', '/')).statusCode, 403);
     assert.equal(f.Booking.find.mock.callCount(), 0);
     f.user.role = 'admin';
     const promoted = await f.request('bookings', 'get', '/');
     assert.equal(promoted.statusCode, 200);
-    assert.deepEqual(promoted.req.user, { id: USER_ID, role: 'admin' });
+    assert.deepEqual(promoted.req.user, { id: USER_ID, role: 'admin', tokenVersion: 0 });
     f.user.isSuspended = true;
     assert.equal((await f.request('bookings', 'get', '/')).statusCode, 403);
     assert.equal(f.User.findById.mock.callCount(), 3);
@@ -464,6 +540,152 @@ test('account lookup failures fail closed without masquerading as invalid JWTs',
     f.User.findById.mock.mockImplementation(() => ({ select: async () => { throw new Error('Database unavailable'); } }));
     const res = await f.request('bookings', 'get', '/mybookings');
     assert.equal(res.statusCode, 500);
-    assert.deepEqual(res.body, { message: 'Unable to verify account' });
+    assert.deepEqual(res.body, { message: 'Something went wrong. Please try again.' });
     assert.equal(f.Booking.find.mock.callCount(), 0);
+});
+
+test('auth rejects absent, malformed and stale token versions', async (t) => {
+    for (const ver of [undefined, null, '0', -1, 0.5, [], {}, 1]) {
+        const f = fixture(t, { decoded: { id: USER_ID, ver } });
+        assert.equal((await f.request('bookings', 'get', '/mybookings')).statusCode, 401);
+        assert.equal(f.Booking.find.mock.callCount(), 0);
+        assert.equal(f.User.findById.mock.callCount(), ver === 1 ? 1 : 0);
+    }
+});
+
+test('strict IDs reject malformed strings, arrays and objects before any rental query', async (t) => {
+    for (const id of [undefined, '', 'abcdefghijkl', 'z'.repeat(24), 'a'.repeat(23), 'a'.repeat(25), `${CAR_ID}\n`, `${CAR_ID}\r`, 123, [CAR_ID], { $ne: null }]) {
+        const f = fixture(t, { user: admin() });
+        for (const routePath of ['/:id/status', '/:id/cancel']) {
+            assert.equal((await f.request('bookings', 'put', routePath, { params: { id }, body: { status: 'confirmed' } })).statusCode, 400);
+        }
+        assert.equal((await f.request('reviews', 'get', '/car/:carId', { params: { carId: id } })).statusCode, 400);
+        assert.equal((await f.request('reviews', 'post', '/', { body: { bookingId: id, rating: 5 } })).statusCode, 400);
+        const customer = fixture(t);
+        assert.equal((await customer.request('bookings', 'post', '/', { body: { carId: id, ...dates } })).statusCode, 400);
+        assert.equal(customer.mongoose.connection.transaction.mock.callCount(), 0);
+        assert.equal(f.Booking.findById.mock.callCount(), 0);
+        assert.equal(f.Review.find.mock.callCount(), 0);
+    }
+});
+
+test('compare-and-set predicates protect against status, ownership and date changes', async (t) => {
+    for (const routePath of ['/:id/status', '/:id/cancel']) {
+        for (const change of [{ status: 'cancelled' }, { user: OTHER_USER_ID }, { returnDate: date(TODAY) }]) {
+            const item = booking(t, { pickupDate: date(TOMORROW) });
+            const f = fixture(t, { ...(routePath.endsWith('status') ? { user: admin() } : {}), bookings: [item],
+                beforeBookingUpdate: () => Object.assign(item, change) });
+            const res = await f.request('bookings', 'put', routePath, { body: { status: 'confirmed' } });
+            assert.equal(res.statusCode, 409);
+            assert.equal(res.body.code, 'BOOKING_CHANGED');
+            assert.equal(item.save.mock.callCount(), 0);
+            for (const [key, value] of Object.entries(change)) assert.deepEqual(item[key], value);
+        }
+    }
+});
+
+test('compare-and-set rechecks pickup restrictions on activation, completion and cancellation', async (t) => {
+    for (const [routePath, status, target, pickup, changedPickup] of [
+        ['/:id/status', 'confirmed', 'active', TODAY, TOMORROW],
+        ['/:id/status', 'active', 'completed', TODAY, TOMORROW],
+        ['/:id/cancel', 'pending', 'cancelled', TOMORROW, TODAY],
+    ]) {
+        const item = booking(t, { status, pickupDate: date(pickup) });
+        const f = fixture(t, { ...(routePath.endsWith('status') ? { user: admin() } : {}), bookings: [item],
+            beforeBookingUpdate: () => { item.pickupDate = date(changedPickup); } });
+        const res = await f.request('bookings', 'put', routePath, { body: { status: target } });
+        assert.equal(res.statusCode, 409);
+        assert.equal(item.status, status);
+        assert.equal(item.save.mock.callCount(), 0);
+    }
+});
+
+test('booking transaction errors are delegated without database detail leakage', async (t) => {
+    const f = fixture(t);
+    f.mongoose.connection.transaction.mock.mockImplementation(async () => { throw new Error('private database credentials'); });
+    const res = await f.request('bookings', 'post', '/', { body: { carId: CAR_ID, ...dates } });
+    assert.equal(res.statusCode, 500);
+    assert.deepEqual(res.body, { message: 'Something went wrong. Please try again.' });
+});
+
+test('review rating and comment types are strict and validated before booking lookup', async (t) => {
+    for (const rating of [undefined, null, '5', true, 0, 6, 1.2, NaN, Infinity, [5], { valueOf: () => 5 }]) {
+        const f = fixture(t);
+        assert.equal((await f.request('reviews', 'post', '/', { body: { bookingId: BOOKING_ID, rating } })).statusCode, 400);
+        assert.equal(f.Booking.findById.mock.callCount(), 0);
+    }
+    for (const comment of [null, 7, [], {}, 'x'.repeat(501)]) {
+        const f = fixture(t);
+        assert.equal((await f.request('reviews', 'post', '/', { body: { bookingId: BOOKING_ID, rating: 5, comment } })).statusCode, 400);
+        assert.equal(f.Booking.findById.mock.callCount(), 0);
+    }
+});
+
+test('review eligibility uses effective completion without settling the stored booking', async (t) => {
+    for (const status of Object.keys(transitions)) {
+        for (const returnDate of [date(TODAY), date(TOMORROW)]) {
+            const item = booking(t, { status, returnDate });
+            const f = fixture(t, { bookings: [item] });
+            const res = await f.request('reviews', 'post', '/', { body: { bookingId: BOOKING_ID, rating: 4, comment: '  Great rental  ' } });
+            const eligible = status === 'completed' || (returnDate <= date(TODAY) && ['confirmed', 'active'].includes(status));
+            assert.equal(res.statusCode, eligible ? 201 : 400);
+            assert.equal(item.status, status);
+            assert.equal(item.save.mock.callCount(), 0);
+            if (eligible) {
+                assert.equal(res.body.comment, 'Great rental');
+                assert.deepEqual(f.operations, ['car-lock', 'review-create', 'review-aggregate', 'car-rating']);
+                assert.equal(f.Review.aggregate.mock.calls[0].result.session.mock.calls[0].arguments[0], f.session);
+                assert.equal(f.cars[0].rating, 4);
+            }
+        }
+    }
+});
+
+test('reviews reject missing bookings, other owners, missing cars and duplicates', async (t) => {
+    for (const [options, expected] of [
+        [{}, 404],
+        [{ bookings: [booking(t, { status: 'completed', user: OTHER_USER_ID })] }, 403],
+        [{ bookings: [booking(t, { status: 'completed' })], cars: [] }, 404],
+        [{ bookings: [booking(t, { status: 'completed' })], reviews: [{ booking: BOOKING_ID }] }, 409],
+    ]) {
+        const f = fixture(t, options);
+        const res = await f.request('reviews', 'post', '/', { body: { bookingId: BOOKING_ID, rating: 5 } });
+        assert.equal(res.statusCode, expected);
+        if (expected === 409) assert.equal(res.body.code, 'REVIEW_EXISTS');
+        assert.equal(f.Review.create.mock.callCount(), 0);
+    }
+});
+
+test('review unique-index races are stable conflicts; database details never escape', async (t) => {
+    for (const code of [11000, 999]) {
+        const f = fixture(t, { bookings: [booking(t, { status: 'completed' })] });
+        f.Review.create.mock.mockImplementation(async () => { throw Object.assign(new Error('private database credentials'), { code }); });
+        const res = await f.request('reviews', 'post', '/', { body: { bookingId: BOOKING_ID, rating: 5 } });
+        assert.equal(res.statusCode, code === 11000 ? 409 : 500);
+        if (code === 11000) assert.equal(res.body.code, 'REVIEW_EXISTS');
+        assert.doesNotMatch(JSON.stringify(res.body), /credentials|private|999|11000/);
+    }
+});
+
+test('review lists request explicit minimal projections and lean responses', async (t) => {
+    const f = fixture(t);
+    assert.equal((await f.request('reviews', 'get', '/car/:carId', { params: { carId: CAR_ID } })).statusCode, 200);
+    const publicQuery = f.Review.find.mock.calls[0].result;
+    assert.deepEqual(publicQuery.select.mock.calls[0].arguments, ['_id rating comment createdAt user']);
+    assert.deepEqual(publicQuery.populate.mock.calls[0].arguments, ['user', 'name -_id']);
+    assert.equal(publicQuery.lean.mock.callCount(), 1);
+    assert.equal((await f.request('reviews', 'get', '/mine')).statusCode, 200);
+    assert.deepEqual(f.Review.find.mock.calls[1].arguments, [{ user: USER_ID }]);
+    assert.deepEqual(f.Review.find.mock.calls[1].result.select.mock.calls[0].arguments, ['_id booking rating']);
+});
+
+test('effective status is pure across the return-day boundary', (t) => {
+    for (const status of Object.keys(transitions)) {
+        const item = Object.freeze(booking(t, { status, returnDate: date(TODAY) }));
+        assert.equal(bookingDates.effectiveBookingStatus(item, date('2026-09-18')), status);
+        const terminal = status === 'pending' ? 'cancelled' : ['confirmed', 'active'].includes(status) ? 'completed' : status;
+        assert.equal(bookingDates.effectiveBookingStatus(item, date(TODAY)), terminal);
+        assert.equal(bookingDates.effectiveBookingStatus(item, date(TOMORROW)), terminal);
+        assert.equal(item.status, status);
+    }
 });

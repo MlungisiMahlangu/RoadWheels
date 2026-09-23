@@ -35,4 +35,14 @@ const validateBookingDates = (pickupDate, returnDate) => {
     return { pickup, returnD };
 };
 
-module.exports = { getBusinessToday, validateBookingDates };
+// Derive lifecycle state without mutating the stored booking. Passing today keeps
+// this helper pure and lets callers use one business date for a whole response.
+const effectiveBookingStatus = (booking, today) => {
+    if (new Date(booking.returnDate) <= today) {
+        if (booking.status === 'pending') return 'cancelled';
+        if (['confirmed', 'active'].includes(booking.status)) return 'completed';
+    }
+    return booking.status;
+};
+
+module.exports = { getBusinessToday, validateBookingDates, effectiveBookingStatus };

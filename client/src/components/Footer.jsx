@@ -39,7 +39,7 @@ export default function Footer() {
           </div>
         </div>
       </div>
-      <div className="footer-bottom"><p>© {new Date().getFullYear()} RoadWheels. All rights reserved.</p><p>Rent. Drive. Explore.</p></div>
+      <div className="footer-bottom"><p>© {new Date().getFullYear()} RoadWheels. All rights reserved.</p><p>Designed & built by <span className="text-white">Mlungisi</span>.</p></div>
     </footer>
   );
 }

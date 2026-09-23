@@ -12,6 +12,7 @@ export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showLogout, setShowLogout] = useState(false);
   const menuRef = useRef(null);
+  const accountButtonRef = useRef(null);
   const mobileRef = useRef(null);
 
   useEffect(() => {
@@ -21,7 +22,7 @@ export default function Navbar() {
       if (event.type === 'keydown') {
         setMobileOpen(false);
         if (mobileOpen) mobileRef.current?.focus();
-        else menuRef.current?.querySelector('button')?.focus();
+        else accountButtonRef.current?.focus();
       }
     };
     if (menuOpen || mobileOpen) {
@@ -50,14 +51,14 @@ export default function Navbar() {
           <div className="flex items-center gap-2 sm:gap-4">
             {user ? (
               <div className="relative" ref={menuRef}>
-                <button className="flex items-center gap-2 rounded-full border border-[var(--color-border)] py-1.5 pl-1.5 pr-3 text-xs" aria-expanded={menuOpen} aria-controls="account-menu" aria-label="Open account menu" onClick={() => { setMenuOpen(!menuOpen); setMobileOpen(false); }}>
+                <button ref={accountButtonRef} className="flex items-center gap-2 rounded-full border border-[var(--color-border)] py-1.5 pl-1.5 pr-3 text-xs" aria-expanded={menuOpen} aria-controls="account-menu" aria-label="Open account menu" onClick={() => { setMenuOpen(!menuOpen); setMobileOpen(false); }}>
                   <span className="flex size-8 items-center justify-center rounded-full bg-[var(--color-soft)] font-semibold">{user.name?.[0]?.toUpperCase()}</span>
                   <span className="hidden sm:block max-w-24 truncate">{user.name?.split(' ')[0]}</span><Icon name="chevron-down" size={14} />
                 </button>
                 {menuOpen && <nav id="account-menu" aria-label="Account menu" className="absolute right-0 top-full mt-3 w-56 rounded-2xl border border-[var(--color-border)] bg-white p-2 shadow-xl">
                   <p className="px-3 py-2 text-[10px] uppercase tracking-widest text-[var(--color-text-muted)]">Your RoadWheels</p>
                   {(user.role === 'admin' ? [['/admin', 'grid', 'Admin dashboard']] : [['/dashboard', 'grid', 'Overview'], ['/my-bookings', 'calendar', 'My bookings'], ['/profile', 'user', 'My profile']]).map(([to, icon, label]) => <Link key={to} to={to} onClick={closeMenus} className="flex items-center gap-3 rounded-lg px-3 py-3 text-xs hover:bg-[var(--color-soft)]"><Icon name={icon} size={16} />{label}</Link>)}
-                  <button className="mt-1 flex w-full items-center gap-3 border-t border-[var(--color-border)] px-3 py-3 text-xs text-red-700" onClick={() => { closeMenus(); setShowLogout(true); }}><Icon name="logout" size={16} />Log out</button>
+                  <button className="mt-1 flex w-full items-center gap-3 border-t border-[var(--color-border)] px-3 py-3 text-xs text-red-700" onClick={() => { accountButtonRef.current?.focus(); closeMenus(); setShowLogout(true); }}><Icon name="logout" size={16} />Log out</button>
                 </nav>}
               </div>
             ) : <>

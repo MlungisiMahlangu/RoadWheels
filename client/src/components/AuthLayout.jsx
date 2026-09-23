@@ -43,11 +43,16 @@ const AuthLayout = ({ eyebrow, title, intro, visualTitle, visualDescription, chi
     <div className="page-shell">
       <div className="grid overflow-hidden rounded-[28px] border border-[#dedfd8] bg-white lg:grid-cols-[0.95fr_1fr]">
         <aside className="relative isolate hidden flex-col justify-between bg-[#18221f] text-white lg:flex lg:min-h-[680px] lg:p-12">
-          <img
-            src="/hero-car.png"
-            alt=""
-            className="absolute inset-0 -z-20 h-full w-full object-cover object-[60%_center]"
-          />
+          <picture>
+            <source media="(min-width: 1024px)" srcSet="/hero-car-768.webp 768w, /hero-car-1280.webp 1280w" sizes="50vw" />
+            <img
+              src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E"
+              alt=""
+              width="1536"
+              height="1024"
+              className="absolute inset-0 -z-20 h-full w-full object-cover object-[60%_center]"
+            />
+          </picture>
           <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#18221f]/50 via-[#18221f]/10 to-[#18221f]/95" />
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em]">RoadWheels / Rent. Drive. Explore.</p>
           <div className="mt-20 max-w-sm lg:mt-64">

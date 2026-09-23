@@ -1,13 +1,10 @@
 import { useState, useEffect, useId } from 'react';
-import { api } from '../services/api';
+import { api, isSessionCurrent, isStrongPassword, PASSWORD_REQUIREMENTS } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import ConfirmDialog from './ConfirmDialog';
 
-const isStrongPassword = (pw) =>
-  pw.length >= 8 && /[A-Z]/.test(pw) && /[0-9]/.test(pw) && /[^A-Za-z0-9]/.test(pw);
-
 const SettingsPanel = () => {
-  const { user, login } = useAuth();
+  const { user, login, sessionSnapshot } = useAuth();
   const id = useId();
   const [profileForm, setProfileForm] = useState({ name: '' });
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -42,15 +39,15 @@ const SettingsPanel = () => {
 
   const handleProfileSave = async () => {
     setShowProfileConfirm(false);
-    if (loading || loadError || profileSaving || !profileForm.name.trim()) return;
+    if (!isSessionCurrent(sessionSnapshot) || loading || loadError || profileSaving || !profileForm.name.trim()) return;
     setProfileSaving(true);
     setProfileMsg(null);
     try {
       const updated = await api.updateProfile({ name: profileForm.name.trim(), email: user.email });
-      login({ ...user, name: updated.name, email: updated.email }, localStorage.getItem('token'));
+      if (!login({ ...user, ...updated }, sessionSnapshot.token, sessionSnapshot)) return;
       setProfileMsg({ type: 'success', text: 'Profile updated.' });
     } catch (err) {
-      setProfileMsg({ type: 'error', text: err.message });
+      if (isSessionCurrent(sessionSnapshot)) setProfileMsg({ type: 'error', text: err.message });
     } finally {
       setProfileSaving(false);
     }
@@ -58,6 +55,7 @@ const SettingsPanel = () => {
 
   const handlePasswordSubmit = (e) => {
     e.preventDefault();
+    if (loading || loadError || passwordSaving) return;
     setPasswordMsg(null);
 
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
@@ -65,7 +63,7 @@ const SettingsPanel = () => {
       return;
     }
     if (!isStrongPassword(passwordForm.newPassword)) {
-      setPasswordMsg({ type: 'error', text: 'Password must be at least 8 characters with an uppercase letter, number, and special character.' });
+      setPasswordMsg({ type: 'error', text: PASSWORD_REQUIREMENTS });
       return;
     }
 
@@ -74,17 +72,23 @@ const SettingsPanel = () => {
 
   const handlePasswordSave = async () => {
     setShowPasswordConfirm(false);
+    if (!isSessionCurrent(sessionSnapshot) || loading || loadError || passwordSaving) return;
+    if (!isStrongPassword(passwordForm.newPassword) || passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordMsg({ type: 'error', text: PASSWORD_REQUIREMENTS });
+      return;
+    }
     setPasswordSaving(true);
     setPasswordMsg(null);
     try {
-      await api.changePassword({
+      const data = await api.changePassword({
         currentPassword: passwordForm.currentPassword,
         newPassword: passwordForm.newPassword,
       });
-      setPasswordMsg({ type: 'success', text: 'Password changed.' });
+      if (!login(data.user, data.token, sessionSnapshot)) return;
+      setPasswordMsg({ type: 'success', text: data.message || 'Password changed.' });
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (err) {
-      setPasswordMsg({ type: 'error', text: err.message });
+      if (isSessionCurrent(sessionSnapshot)) setPasswordMsg({ type: 'error', text: err.message });
     } finally {
       setPasswordSaving(false);
     }
@@ -196,7 +200,7 @@ const SettingsPanel = () => {
               />
             </div>
           </div>
-          <p id={`${id}-password-requirements`} className="text-xs text-[var(--color-text-muted)]">At least 8 characters, including an uppercase letter, a number, and a special character.</p>
+          <p id={`${id}-password-requirements`} className="text-xs text-[var(--color-text-muted)]">{PASSWORD_REQUIREMENTS}</p>
 
           {passwordMsg && (
             <p className={passwordMsg.type === 'success' ? 'notice-success' : 'notice-error'} role={passwordMsg.type === 'success' ? 'status' : 'alert'}>
@@ -206,7 +210,7 @@ const SettingsPanel = () => {
 
           <button
             type="submit"
-            disabled={passwordSaving}
+            disabled={loading || !!loadError || passwordSaving}
             className="btn-primary"
           >
             {passwordSaving ? 'Updating...' : 'Update Password'}

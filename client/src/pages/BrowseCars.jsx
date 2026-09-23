@@ -5,7 +5,7 @@ import { today, nextDate, validRentalDates } from '../services/rentalDates';
 import CarCard from '../components/CarCard';
 import Icon from '../components/Icon';
 
-const categories = ['Economy', 'Sedan', 'SUV', 'Hatchback', 'Bakkies', 'Minivan(MPV)', 'Truck', 'Luxury'];
+const categories = ['Economy', 'Sedan', 'SUV', 'Hatchback', 'Bakkies', 'Minivan (MPV)', 'Truck', 'Luxury'];
 const filterOptions = { transmission: ['Manual', 'Automatic'], fuelType: ['Petrol', 'Diesel', 'Electric', 'Hybrid'] };
 const sortOptions = [['newest', 'Newest additions'], ['price-asc', 'Price: low to high'], ['price-desc', 'Price: high to low'], ['rating', 'Highest rated']];
 const queryKeys = ['category', 'transmission', 'fuelType', 'location', 'search', 'sort', 'pickupDate', 'returnDate'];
@@ -83,7 +83,7 @@ export default function BrowseCars() {
       </form>
 
       <div className="mb-8 flex gap-2 overflow-x-auto pb-2" aria-label="Car categories">
-        {['All cars', ...categories].map((category) => { const value = category === 'All cars' ? '' : category; return <button key={category} className={`filter-chip ${params.get('category') === value || (!params.get('category') && !value) ? 'active' : ''}`} aria-pressed={(params.get('category') || '') === value} onClick={() => update({ category: value })}>{category === 'All cars' && <Icon name="grid" size={13} />}{category === 'Minivan(MPV)' ? 'Minivan' : category}</button>; })}
+        {['All cars', ...categories].map((category) => { const value = category === 'All cars' ? '' : category; return <button key={category} className={`filter-chip ${params.get('category') === value || (!params.get('category') && !value) ? 'active' : ''}`} aria-pressed={(params.get('category') || '') === value} onClick={() => update({ category: value })}>{category === 'All cars' && <Icon name="grid" size={13} />}{category === 'Minivan (MPV)' ? 'Minivan' : category}</button>; })}
       </div>
 
       <div className="browse-layout">

@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { api } from '../services/api';
+import { api, isSessionCurrent } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { formatDate } from '../services/rentalDates';
 import Icon from './Icon';
 
-const ReviewModal = ({ booking, onClose, onSubmitted }) => {
+// onAlreadyReviewed(bookingId) invalidates parent history without a new-review success message.
+const ReviewModal = ({ booking, onClose, onSubmitted, onAlreadyReviewed }) => {
+  const { sessionSnapshot } = useAuth();
+  const mounted = useRef(false);
   const [rating, setRating] = useState(0);
   const [hovered, setHovered] = useState(0);
   const [comment, setComment] = useState('');
@@ -17,6 +21,7 @@ const ReviewModal = ({ booking, onClose, onSubmitted }) => {
   useEffect(() => { closeRef.current = onClose; }, [onClose]);
 
   useEffect(() => {
+    mounted.current = true;
     const previousFocus = document.activeElement;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -33,6 +38,7 @@ const ReviewModal = ({ booking, onClose, onSubmitted }) => {
     };
     document.addEventListener('keydown', handleKey);
     return () => {
+      mounted.current = false;
       document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', handleKey);
       previousFocus?.focus();
@@ -44,19 +50,25 @@ const ReviewModal = ({ booking, onClose, onSubmitted }) => {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (inFlight.current) return;
+    if (inFlight.current || !isSessionCurrent(sessionSnapshot)) return;
     if (rating < 1) { setError('Please select a star rating.'); return; }
     inFlight.current = true;
     setSubmitting(true);
     setError('');
     try {
       await api.createReview({ bookingId: booking._id, rating, comment: comment.trim() });
-      onSubmitted();
+      if (mounted.current && isSessionCurrent(sessionSnapshot)) onSubmitted();
     } catch (err) {
+      if (!mounted.current || !isSessionCurrent(sessionSnapshot)) return;
+      if (err.code === 'REVIEW_EXISTS') {
+        onAlreadyReviewed?.(booking._id);
+        onClose();
+        return;
+      }
       setError(err.message || 'Unable to submit your review. Please try again.');
     } finally {
       inFlight.current = false;
-      setSubmitting(false);
+      if (mounted.current) setSubmitting(false);
     }
   };
 

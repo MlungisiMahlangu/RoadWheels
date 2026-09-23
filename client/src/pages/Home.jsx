@@ -49,7 +49,7 @@ export default function Home() {
   return (
     <div>
       <section className="home-hero" aria-labelledby="hero-heading">
-        <img src="/hero-car.png" alt="BMW overlooking Cape Town and Table Mountain at sunset" className="hero-image" fetchPriority="high" />
+        <img src="/hero-car-1536.webp" srcSet="/hero-car-768.webp 768w, /hero-car-1280.webp 1280w, /hero-car-1536.webp 1536w" sizes="100vw" width="1536" height="1024" alt="BMW overlooking Cape Town and Table Mountain at sunset" className="hero-image" fetchPriority="high" />
         <div className="hero-shade" />
         <div className="hero-content">
           <p className="hero-kicker">South Africa, on your terms</p>
@@ -82,7 +82,7 @@ export default function Home() {
             { name: 'City essentials', copy: 'Make the everyday effortless.', image: 'sedan', to: '/browse?category=Sedan' },
             { name: 'Room to roam', copy: 'More space. More possibilities.', image: 'suv', to: '/browse?category=SUV' },
             { name: 'A quieter escape', copy: 'Discover a different kind of drive.', image: 'electric', to: '/browse?fuelType=Electric' },
-          ].map((category) => <Link key={category.name} to={category.to} className="category-card"><h3>{category.name}</h3><p>{category.copy}</p><span className="category-arrow"><Icon name="arrow-up-right" size={15} /></span><img src={`/collections/${category.image}.png`} alt="" loading="lazy" /></Link>)}
+          ].map((category) => <Link key={category.name} to={category.to} className="category-card"><h3>{category.name}</h3><p>{category.copy}</p><span className="category-arrow"><Icon name="arrow-up-right" size={15} /></span><img src={`/collections/${category.image}.webp`} width="800" height="800" alt="" loading="lazy" decoding="async" /></Link>)}
         </div>
       </section>
 

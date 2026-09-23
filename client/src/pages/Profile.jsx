@@ -1,16 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Link, Navigate } from 'react-router-dom';
-import { api } from '../services/api';
+import { api, isSessionCurrent, isStrongPassword, PASSWORD_REQUIREMENTS } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import AccountNav from '../components/AccountNav';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { PasswordField } from '../components/AuthLayout';
 
-const isStrongPassword = (pw) =>
-  pw.length >= 8 && /[A-Z]/.test(pw) && /[0-9]/.test(pw) && /[^A-Za-z0-9]/.test(pw);
-
 const Profile = () => {
-  const { user, login } = useAuth();
+  const { user, login, sessionSnapshot } = useAuth();
   const authenticated = Boolean(user);
   const userId = user?._id || user?.id;
   const [form, setForm] = useState({ name: '', email: '', phone: '', licenseNumber: '' });
@@ -65,12 +62,12 @@ const Profile = () => {
 
   const handleProfileSave = async () => {
     setShowProfileConfirm(false);
-    if (!canSave || savingProfile || !form.name.trim()) return;
+    if (!isSessionCurrent(sessionSnapshot) || !canSave || savingProfile || !form.name.trim()) return;
     setSavingProfile(true);
     setProfileMsg(null);
     try {
       const updated = await api.updateProfile({ ...form, name: form.name.trim(), email: user.email });
-      login({ ...user, name: updated.name, email: updated.email }, localStorage.getItem('token'));
+      if (!login({ ...user, ...updated }, sessionSnapshot.token, sessionSnapshot)) return;
       setForm((current) => ({
         name: updated.name ?? current.name.trim(),
         email: updated.email ?? current.email,
@@ -79,7 +76,7 @@ const Profile = () => {
       }));
       setProfileMsg({ type: 'success', text: 'Profile updated.' });
     } catch (err) {
-      setProfileMsg({ type: 'error', text: err.message || 'Unable to save your profile. Please try again.' });
+      if (isSessionCurrent(sessionSnapshot)) setProfileMsg({ type: 'error', text: err.message || 'Unable to save your profile. Please try again.' });
     } finally {
       setSavingProfile(false);
     }
@@ -94,7 +91,7 @@ const Profile = () => {
       return;
     }
     if (!isStrongPassword(passwordForm.newPassword)) {
-      setPasswordMsg({ type: 'error', text: 'Password must be at least 8 characters with an uppercase letter, number, and special character' });
+      setPasswordMsg({ type: 'error', text: PASSWORD_REQUIREMENTS });
       return;
     }
     setShowPasswordConfirm(true);
@@ -102,18 +99,23 @@ const Profile = () => {
 
   const handlePasswordSave = async () => {
     setShowPasswordConfirm(false);
-    if (!canSave || savingPassword) return;
+    if (!isSessionCurrent(sessionSnapshot) || !canSave || savingPassword) return;
+    if (!isStrongPassword(passwordForm.newPassword) || passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordMsg({ type: 'error', text: PASSWORD_REQUIREMENTS });
+      return;
+    }
     setSavingPassword(true);
     setPasswordMsg(null);
     try {
-      await api.changePassword({
+      const data = await api.changePassword({
         currentPassword: passwordForm.currentPassword,
         newPassword: passwordForm.newPassword,
       });
-      setPasswordMsg({ type: 'success', text: 'Password changed.' });
+      if (!login(data.user, data.token, sessionSnapshot)) return;
+      setPasswordMsg({ type: 'success', text: data.message || 'Password changed.' });
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (err) {
-      setPasswordMsg({ type: 'error', text: err.message || 'Unable to change your password. Please try again.' });
+      if (isSessionCurrent(sessionSnapshot)) setPasswordMsg({ type: 'error', text: err.message || 'Unable to change your password. Please try again.' });
     } finally {
       setSavingPassword(false);
     }
@@ -257,7 +259,7 @@ const Profile = () => {
                       minLength={8}
                       value={passwordForm.newPassword}
                       onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-                      description="At least 8 characters, including an uppercase letter, a number, and a special character."
+                      description={PASSWORD_REQUIREMENTS}
                     />
                     <PasswordField
                       id="profile-confirm-password"

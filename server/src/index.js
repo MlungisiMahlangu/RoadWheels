@@ -1,53 +1,45 @@
-require('dotenv').config();
-const express = require('express');
+require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');
-const cors = require('cors');
+const { createApp } = require('./app');
 
-const authRoutes = require('../routes/authRoutes');
-const carRoutes = require('../routes/carRoutes');
-const bookingRoutes = require('../routes/bookingRoutes');
-const contactRoutes = require('../routes/contactRoutes');
-const reviewRoutes = require('../routes/reviewRoutes');
+async function start() {
+    if (!process.env.MONGO_URI) throw new Error('MONGO_URI is required.');
+    if (!process.env.JWT_SECRET || Buffer.byteLength(process.env.JWT_SECRET, 'utf8') < 32) {
+        throw new Error('JWT_SECRET must contain at least 32 bytes; use a cryptographically random secret.');
+    }
+    const port = Number(process.env.PORT || 5000);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT must be between 1 and 65535.');
+    const app = createApp();
+    mongoose.set('bufferCommands', false);
+    mongoose.set('maxTimeMS', 10000);
+    await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 10000 });
+    const topology = await mongoose.connection.db.admin().command({ hello: 1 });
+    if (!topology.setName && topology.msg !== 'isdbgrid') {
+        throw new Error('MongoDB must support transactions: use a replica set or Atlas.');
+    }
+    await Promise.all(Object.values(mongoose.models).map(model => model.init()));
+    const server = app.listen(port, () => console.log(`RoadWheels listening on port ${port}`));
+    server.requestTimeout = 30000;
+    server.headersTimeout = 15000;
+    const shutdown = () => {
+        const deadline = setTimeout(() => process.exit(1), 10000);
+        deadline.unref();
+        server.close(async () => {
+            await mongoose.disconnect();
+            clearTimeout(deadline);
+        });
+    };
+    process.once('SIGTERM', shutdown);
+    process.once('SIGINT', shutdown);
+    return server;
+}
 
+if (require.main === module) {
+    start().catch(async (err) => {
+        console.error('Unable to start RoadWheels:', err.name === 'Error' ? err.message : 'Check database availability and configuration.');
+        await mongoose.disconnect();
+        process.exitCode = 1;
+    });
+}
 
-const app = express()
-
-// Middleware
-app.use(cors())
-app.use(express.json())
-
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/cars', carRoutes);
-app.use('/api/bookings', bookingRoutes);
-app.use('/api/contact', contactRoutes);
-app.use('/api/reviews', reviewRoutes);
-
-// Health check
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok' })
-})
-
-// 404 handler
-app.use((_req, res) => {
-  res.status(404).json({ message: 'Route not found' });
-});
-
-// Global error handler
-app.use((err, _req, res, _next) => {
-  console.error(err.stack);
-  res.status(500).json({ message: 'Something went wrong!' });
-});
-
-const PORT = process.env.PORT || 5000;
-
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => {
-    console.log('Connected to MongoDB')
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`))
-  })
-  .catch((err) => {
-    console.error('MongoDB connection error:', err)
-    process.exit(1)
-  })
+module.exports = { start };

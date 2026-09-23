@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { api } from '../services/api';
+import { api, isSessionCurrent } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import ConfirmDialog from './ConfirmDialog';
 
 const UsersPanel = ({ bookings }) => {
+  const { sessionSnapshot } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
@@ -35,17 +37,19 @@ const UsersPanel = ({ bookings }) => {
   };
 
   const handleSuspend = async () => {
-    if (!suspendTarget || suspendInFlight.current) return;
-    const userId = suspendTarget;
+    if (!suspendTarget || suspendInFlight.current || !isSessionCurrent(sessionSnapshot)) return;
+    const target = users.find((user) => user._id === suspendTarget);
+    if (!target) return;
+    const isSuspended = !target.isSuspended;
     suspendInFlight.current = true;
     setSuspending(true);
     setSuspendTarget(null);
     setMsg(null);
     try {
-      await api.toggleUserSuspend(userId);
-      fetchUsers();
+      await api.setUserSuspended(target._id, isSuspended);
+      if (isSessionCurrent(sessionSnapshot)) fetchUsers();
     } catch (err) {
-      setMsg({ type: 'error', text: err.message || 'Unable to update this user. Please try again.' });
+      if (isSessionCurrent(sessionSnapshot)) setMsg({ type: 'error', text: err.message || 'Unable to update this user. Please try again.' });
     } finally {
       suspendInFlight.current = false;
       setSuspending(false);
@@ -141,8 +145,8 @@ const UsersPanel = ({ bookings }) => {
         title={targetUser?.isSuspended ? 'Unsuspend User' : 'Suspend User'}
         message={
           targetUser?.isSuspended
-            ? `Unsuspend ${targetUser.name}? They will be able to log in again.`
-            : `Suspend ${targetUser?.name}? They will be blocked from logging in until unsuspended.`
+            ? `Unsuspend ${targetUser.name}? They will be able to log in again. Existing bookings remain unchanged.`
+            : `Suspend ${targetUser?.name}? Their current access will be revoked and they cannot log in until unsuspended. Existing bookings remain unchanged and will not be cancelled automatically.`
         }
         confirmLabel={targetUser?.isSuspended ? 'Unsuspend' : 'Suspend'}
         variant={targetUser?.isSuspended ? 'default' : 'danger'}

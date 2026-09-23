@@ -1,16 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { api } from '../services/api';
+import { api, isSessionCurrent, isStrongPassword, PASSWORD_REQUIREMENTS } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import AuthLayout, { PasswordField } from '../components/AuthLayout';
-
-const isStrongPassword = (pw) =>
-  pw.length >= 8 && /[A-Z]/.test(pw) && /[0-9]/.test(pw) && /[^A-Za-z0-9]/.test(pw);
 
 const Signup = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, login } = useAuth();
+  const { user, login, sessionSnapshot, sessionStatus } = useAuth();
+  const mounted = useRef(false);
+  const inFlight = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -20,9 +20,10 @@ const Signup = () => {
     && !requestedFrom.startsWith('//') && !/[\\\p{Cc}]/u.test(requestedFrom)
     ? requestedFrom : null;
 
+  const busy = loading || sessionStatus === 'validating';
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (loading) return;
+    if (busy || inFlight.current || !isSessionCurrent(sessionSnapshot)) return;
     setError('');
 
     if (!form.name.trim()) {
@@ -34,21 +35,23 @@ const Signup = () => {
       return;
     }
     if (!isStrongPassword(form.password)) {
-      setError('Password must be at least 8 characters with an uppercase letter, number, and special character');
+      setError(PASSWORD_REQUIREMENTS);
       return;
     }
 
+    inFlight.current = true;
     setLoading(true);
     try {
       const data = await api.signup({ ...form, name: form.name.trim() });
+      if (!mounted.current || !login(data.user, data.token, sessionSnapshot)) return;
       const destination = data.user.role === 'admin' ? '/admin' : from || '/dashboard';
       setAuthDestination(destination);
-      login(data.user, data.token);
       navigate(destination, { replace: true });
     } catch (err) {
-      setError(err.message || 'Unable to create your account. Please try again.');
+      if (mounted.current && isSessionCurrent(sessionSnapshot)) setError(err.message || 'Unable to create your account. Please try again.');
     } finally {
-      setLoading(false);
+      inFlight.current = false;
+      if (mounted.current) setLoading(false);
     }
   };
 
@@ -62,8 +65,8 @@ const Signup = () => {
       visualTitle="More road. More possibility."
       visualDescription="From everyday plans to a change of scenery. Your next journey is yours to choose."
     >
-      <form onSubmit={handleSubmit} aria-busy={loading}>
-        <fieldset disabled={loading} className="min-w-0 space-y-5">
+      <form onSubmit={handleSubmit} aria-busy={busy}>
+        <fieldset disabled={busy} className="min-w-0 space-y-5">
           <div>
             <label htmlFor="signup-name" className="field-label">Full name</label>
             <input
@@ -99,7 +102,7 @@ const Signup = () => {
             minLength={8}
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
-            description="At least 8 characters, including an uppercase letter, a number, and a special character."
+            description={PASSWORD_REQUIREMENTS}
           />
           <PasswordField
             id="signup-confirm-password"
@@ -110,8 +113,8 @@ const Signup = () => {
             onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
           />
           {error && <p className="notice-error" role="alert">{error}</p>}
-          <button type="submit" disabled={loading} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50">
-            {loading ? 'Creating account...' : 'Create account'}
+          <button type="submit" disabled={busy} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50">
+            {sessionStatus === 'validating' ? 'Checking session…' : loading ? 'Creating account...' : 'Create account'}
           </button>
         </fieldset>
       </form>

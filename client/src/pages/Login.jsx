@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { api } from '../services/api';
+import { api, isSessionCurrent } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import AuthLayout, { PasswordField } from '../components/AuthLayout';
 
 const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, login } = useAuth();
+  const { user, login, sessionSnapshot, sessionStatus } = useAuth();
+  const mounted = useRef(false);
+  const inFlight = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -17,21 +20,24 @@ const Login = () => {
     && !requestedFrom.startsWith('//') && !/[\\\p{Cc}]/u.test(requestedFrom)
     ? requestedFrom : null;
 
+  const busy = loading || sessionStatus === 'validating';
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (loading) return;
+    if (busy || inFlight.current || !isSessionCurrent(sessionSnapshot)) return;
+    inFlight.current = true;
     setError('');
     setLoading(true);
     try {
       const data = await api.login(form);
+      if (!mounted.current || !login(data.user, data.token, sessionSnapshot)) return;
       const destination = data.user.role === 'admin' ? '/admin' : from || '/dashboard';
       setAuthDestination(destination);
-      login(data.user, data.token);
       navigate(destination, { replace: true });
     } catch (err) {
-      setError(err.message || 'Unable to log in. Please try again.');
+      if (mounted.current && isSessionCurrent(sessionSnapshot)) setError(err.message || 'Unable to log in. Please try again.');
     } finally {
-      setLoading(false);
+      inFlight.current = false;
+      if (mounted.current) setLoading(false);
     }
   };
 
@@ -45,8 +51,8 @@ const Login = () => {
       visualTitle="Good to have you along."
       visualDescription="City streets or the scenic route. Find a car for wherever life takes you next."
     >
-      <form onSubmit={handleSubmit} aria-busy={loading}>
-        <fieldset disabled={loading} className="min-w-0 space-y-5">
+      <form onSubmit={handleSubmit} aria-busy={busy}>
+        <fieldset disabled={busy} className="min-w-0 space-y-5">
           <div>
             <label htmlFor="login-email" className="field-label">Email address</label>
             <input
@@ -69,8 +75,8 @@ const Login = () => {
             onChange={(e) => setForm({ ...form, password: e.target.value })}
           />
           {error && <p className="notice-error" role="alert">{error}</p>}
-          <button type="submit" disabled={loading} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50">
-            {loading ? 'Logging in...' : 'Log in'}
+          <button type="submit" disabled={busy} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50">
+            {sessionStatus === 'validating' ? 'Checking session…' : loading ? 'Logging in...' : 'Log in'}
           </button>
         </fieldset>
       </form>
