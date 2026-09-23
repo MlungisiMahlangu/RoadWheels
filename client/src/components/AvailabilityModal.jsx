@@ -1,9 +1,31 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { today as businessToday } from '../services/rentalDates';
 
 const AvailabilityModal = ({ car, bookings, onClose }) => {
   const [monthOffset, setMonthOffset] = useState(0);
+  const dialogRef = useRef(null);
 
-  const today = new Date();
+  useEffect(() => {
+    const previous = document.activeElement;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    dialogRef.current?.querySelector('button')?.focus();
+    const handleKey = (event) => {
+      if (event.key === 'Escape') onClose();
+      if (event.key === 'Tab') {
+        const buttons = dialogRef.current?.querySelectorAll('button');
+        if (!buttons?.length) return;
+        const first = buttons[0];
+        const last = buttons[buttons.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', handleKey); if (previous?.isConnected) previous.focus(); };
+  }, [onClose]);
+
+  const today = new Date(`${businessToday()}T12:00:00`);
   const viewDate = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -15,23 +37,23 @@ const AvailabilityModal = ({ car, bookings, onClose }) => {
   );
 
   const isBooked = (day) => {
-    const date = new Date(year, month, day);
+    const date = new Date(Date.UTC(year, month, day));
     return carBookings.some((b) => date >= new Date(b.pickupDate) && date < new Date(b.returnDate));
   };
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6">
-      <div className="bg-white rounded-2xl w-full max-w-md p-4 sm:p-6">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="availability-title" className="bg-white rounded-3xl w-full max-w-md max-h-[90dvh] overflow-y-auto p-5 sm:p-7">
         <div className="flex items-center justify-between mb-1">
-          <h2 className="font-bold text-lg">{car.brand} {car.name}</h2>
-          <button onClick={onClose} className="text-2xl leading-none text-[var(--color-text-muted)]">×</button>
+          <h2 id="availability-title" className="font-bold text-lg">{car.brand} {car.name}</h2>
+          <button onClick={onClose} aria-label="Close availability calendar" className="icon-button text-2xl leading-none text-[var(--color-text-muted)]">×</button>
         </div>
         <p className="text-sm text-[var(--color-text-muted)] mb-4">Availability calendar</p>
 
         <div className="flex items-center justify-between mb-3">
-          <button onClick={() => setMonthOffset((m) => m - 1)} className="px-2 py-1 rounded hover:bg-gray-100">‹</button>
+          <button aria-label="Previous month" onClick={() => setMonthOffset((m) => m - 1)} className="px-2 py-1 rounded hover:bg-gray-100">‹</button>
           <span className="font-medium text-sm">{viewDate.toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
-          <button onClick={() => setMonthOffset((m) => m + 1)} className="px-2 py-1 rounded hover:bg-gray-100">›</button>
+          <button aria-label="Next month" onClick={() => setMonthOffset((m) => m + 1)} className="px-2 py-1 rounded hover:bg-gray-100">›</button>
         </div>
 
         <div className="grid grid-cols-7 gap-1 text-center text-xs text-[var(--color-text-muted)] mb-1">

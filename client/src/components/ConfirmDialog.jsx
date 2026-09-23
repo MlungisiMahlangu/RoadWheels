@@ -1,63 +1,53 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import Icon from './Icon';
 
-const ConfirmDialog = ({ open, title, message, confirmLabel = 'Yes', cancelLabel = 'Cancel', variant = 'default', onConfirm, onCancel }) => {
-  const cancelRef = useRef(null);
+export default function ConfirmDialog({ open, title, message, confirmLabel = 'Yes', cancelLabel = 'Cancel', variant = 'default', onConfirm, onCancel }) {
+  const dialogRef = useRef(null);
+  const cancelRef = useRef(onCancel);
+  const id = useId();
 
-  useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden';
-      // Focus cancel button for keyboard safety
-      setTimeout(() => cancelRef.current?.focus(), 50);
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => { document.body.style.overflow = ''; };
-  }, [open]);
+  useEffect(() => { cancelRef.current = onCancel; }, [onCancel]);
 
-  // Close on Escape key
   useEffect(() => {
     if (!open) return;
-    const handler = (e) => { if (e.key === 'Escape') onCancel(); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [open, onCancel]);
+    const previous = document.activeElement;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const dialog = dialogRef.current;
+    dialog?.querySelector('button')?.focus();
+    const handleKey = (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); cancelRef.current(); }
+      if (event.key === 'Tab') {
+        const buttons = dialog?.querySelectorAll('button:not(:disabled)');
+        if (!buttons?.length) return;
+        const first = buttons[0];
+        const last = buttons[buttons.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.body.style.overflow = overflow;
+      document.removeEventListener('keydown', handleKey);
+      if (previous?.isConnected) previous.focus();
+    };
+  }, [open]);
 
   if (!open) return null;
-
-  const confirmStyles = variant === 'danger'
-    ? 'bg-red-600 hover:bg-red-700 focus-ring-red'
-    : 'bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] focus-ring-accent';
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-[fadeIn_0.15s_ease-out]"
-        onClick={onCancel}
-      />
-      {/* Panel */}
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-[scaleIn_0.2s_ease-out]">
-        <h3 className="text-lg font-bold mb-2">{title}</h3>
-        <p className="text-sm text-[var(--color-text-muted)] leading-relaxed mb-6">{message}</p>
-        <div className={`flex ${cancelLabel ? 'gap-3' : ''}`}>{cancelLabel && (
-          <button
-            ref={cancelRef}
-            onClick={onCancel}
-            className="flex-1 py-2.5 rounded-full border border-[var(--color-border)] font-medium text-sm hover:bg-gray-50 transition-colors"
-          >
-            {cancelLabel}
-          </button>
-        )}
-          <button
-            onClick={onConfirm}
-            className={`flex-1 py-2.5 rounded-full text-white font-semibold text-sm transition-colors ${confirmStyles}`}
-          >
-            {confirmLabel}
-          </button>
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-5" role="presentation">
+      <div className="absolute inset-0 bg-[#101a16]/60 backdrop-blur-sm animate-[fadeIn_0.15s_ease-out]" onClick={onCancel} />
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} aria-describedby={`${id}-message`} className="relative w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-3xl bg-white p-7 sm:p-8 shadow-2xl animate-[scaleIn_0.2s_ease-out]">
+        <div className={`mb-5 grid size-11 place-items-center rounded-2xl ${variant === 'danger' ? 'bg-red-50 text-red-700' : 'bg-[var(--color-soft)] text-[var(--color-accent)]'}`}><Icon name={variant === 'danger' ? 'close' : 'check'} size={22} /></div>
+        <h2 id={`${id}-title`} className="text-2xl font-semibold mb-3">{title}</h2>
+        <p id={`${id}-message`} className="text-sm text-[var(--color-text-muted)] leading-7 mb-7">{message}</p>
+        <div className="flex flex-wrap gap-3">
+          {cancelLabel && <button onClick={onCancel} className="btn-secondary flex-1 !text-xs">{cancelLabel}</button>}
+          <button onClick={onConfirm} className={`btn-primary flex-1 !text-xs ${variant === 'danger' ? '!bg-red-700 hover:!bg-red-800' : ''}`}>{confirmLabel}</button>
         </div>
       </div>
-    </div>
+    </div>, document.body,
   );
-};
-
-export default ConfirmDialog;
+}

@@ -2,20 +2,36 @@ const express = require('express');
 const Car = require('../models/Car');
 const Booking = require('../models/Booking');
 const { protectedRoute, adminOnly } = require('../middleware/auth');
+const { validateBookingDates } = require('./bookingDates');
 const router = express.Router();
 
 //Get all cars (public , with optional filters; ?all=true for admin)
 router.get('/', async (req, res) => {
     try{
-        const { location, category, transmission, brand, fuelType, search, sort, all } = req.query;
+        const filterInputs = ['location', 'category', 'transmission', 'brand', 'fuelType', 'search', 'sort', 'all', 'pickupDate', 'returnDate'];
+        if (filterInputs.some((key) => req.query[key] !== undefined && typeof req.query[key] !== 'string')) {
+            return res.status(400).json({ message: 'Car filters must be single string values' });
+        }
+        const { location, category, transmission, brand, fuelType, search, sort, all, pickupDate, returnDate } = req.query;
         const filter = all === 'true' ? {} : { isAvailable: { $ne: false } };
+        if (pickupDate !== undefined || returnDate !== undefined) {
+            const { pickup, returnD, error } = validateBookingDates(pickupDate, returnDate);
+            if (error) return res.status(400).json({ message: error });
+            const bookedCarIds = await Booking.distinct('car', {
+                status: { $in: ['pending', 'confirmed', 'active'] },
+                pickupDate: { $lt: returnD },
+                returnDate: { $gt: pickup },
+            });
+            filter._id = { $nin: bookedCarIds };
+        }
         if (location) filter.location = location;
         if (category) filter.category = category;
         if (transmission) filter.transmission = transmission;
         if (brand) filter.brand = brand;
         if (fuelType) filter.fuelType = fuelType;
         if (search) {
-            const pattern = new RegExp(search.trim(), 'i');
+            const literalSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const pattern = new RegExp(literalSearch, 'i');
             filter.$or = [{ brand: pattern }, { name: pattern }];
         }
 
@@ -25,7 +41,7 @@ router.get('/', async (req, res) => {
             'rating': { rating: -1 },
             'newest': { createdAt: -1 },
         };
-        const sortBy = sortOptions[sort] || { createdAt: -1 };
+        const sortBy = Object.hasOwn(sortOptions, sort) ? sortOptions[sort] : { createdAt: -1 };
 
         const cars = await Car.find(filter).sort(sortBy);
         res.json(cars);

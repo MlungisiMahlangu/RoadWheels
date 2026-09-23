@@ -1,221 +1,119 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
+import { today, nextDate, validRentalDates } from '../services/rentalDates';
 import CarCard from '../components/CarCard';
+import Icon from '../components/Icon';
 
-const Home = () => {
-  const [featuredCars, setFeaturedCars] = useState([]);
+const questions = [
+  ['What do I need to rent a car?', 'Bring your valid driver’s license and a form of identification. Contact our team before pickup to confirm any deposit and vehicle-specific requirements.'],
+  ['How does booking work?', 'Choose your car and dates, then submit a booking request. Your reservation starts as pending; our team confirms it in your account. You can follow its progress in My bookings.'],
+  ['Can I cancel my booking?', 'You can cancel a pending or confirmed booking from My bookings before the pickup date. If your rental has already started, contact our team for help.'],
+  ['Where can I collect my car?', 'Each listing shows its pickup city. Filter by Johannesburg, Pretoria, Cape Town or Durban to see the cars currently listed in that location.'],
+  ['Have a special request?', 'Need help with pickup arrangements, mileage or a longer rental? Send us a message before you book so our team can help with the details.'],
+];
+
+export default function Home() {
+  const navigate = useNavigate();
+  const [cars, setCars] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
+  const [location, setLocation] = useState('');
+  const [pickupDate, setPickupDate] = useState('');
+  const [returnDate, setReturnDate] = useState('');
+  const [dateError, setDateError] = useState('');
 
   useEffect(() => {
-    api.getCars().then((data) => setFeaturedCars(data.slice(0, 3))).catch(() => {});
-  }, []);
+    let active = true;
+    setLoading(true);
+    setError('');
+    api.getCars('sort=rating').then((data) => { if (active) setCars(data.slice(0, 3)); })
+      .catch(() => { if (active) setError('We couldn’t load the collection just now. Please try again.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [retry]);
+
+  const search = (event) => {
+    event.preventDefault();
+    if ((pickupDate || returnDate) && !validRentalDates(pickupDate, returnDate)) {
+      setDateError('Choose a pickup date from today and a return date at least one day later.');
+      return;
+    }
+    const params = new URLSearchParams();
+    if (location) params.set('location', location);
+    if (pickupDate) { params.set('pickupDate', pickupDate); params.set('returnDate', returnDate); }
+    navigate(`/browse${params.size ? `?${params}` : ''}`);
+  };
 
   return (
     <div>
-      {/* Hero — unchanged */}
-      <section className="relative overflow-hidden">
-        <img
-          src="/hero-car.png"
-          alt="RoadWheels"
-          className="absolute inset-0 w-full h-full object-cover"
-          style={{
-            maskImage: 'linear-gradient(to bottom, black 65%, transparent 100%)',
-            WebkitMaskImage: 'linear-gradient(to bottom, black 65%, transparent 100%)',
-          }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-[var(--color-bg)] via-transparent to-black/10 opacity-70" />
-
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 pt-32 sm:pt-40 pb-44 sm:pb-56">
-          <p className="text-[var(--color-accent)] font-semibold text-base sm:text-lg mb-3">
-            Need a ride? No stress, we got you.
-          </p>
-          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-tight mb-6 max-w-2xl drop-shadow-sm">
-            Your next ride, on your terms.
-          </h1>
-          <p className="text-base sm:text-lg text-[var(--color-text-muted)] mb-8 max-w-md">
-            Browse, book, and hit the road in minutes. No hidden fees, no hassle.
-          </p>
-          <Link
-            to="/browse"
-            className="inline-block px-8 py-4 rounded-full bg-[var(--color-accent)] text-white font-semibold text-lg hover:bg-[var(--color-accent-hover)] transition-all hover:scale-105 shadow-lg"
-          >
-            Browse Cars
-          </Link>
+      <section className="home-hero" aria-labelledby="hero-heading">
+        <img src="/hero-car.png" alt="BMW overlooking Cape Town and Table Mountain at sunset" className="hero-image" fetchPriority="high" />
+        <div className="hero-shade" />
+        <div className="hero-content">
+          <p className="hero-kicker">South Africa, on your terms</p>
+          <h1 id="hero-heading" className="hero-title">Good drives.<br />Great stories.<br /><span>Your next chapter.</span></h1>
+          <p className="hero-copy">The city, the coast, the long way home. Find the right car for wherever life takes you next.</p>
+          <div className="hero-actions"><Link to="/browse" className="btn-primary">Explore the fleet <Icon name="arrow-up-right" size={17} /></Link><Link to="/#how-it-works" className="text-link !text-xs">How it works <Icon name="arrow-right" size={15} /></Link></div>
         </div>
+        <div className="hero-caption"><strong>A different kind of daily drive.</strong>Cape Town, South Africa</div>
       </section>
 
-      {/* Trust bar — unchanged */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 -mt-12 sm:-mt-16 relative z-10">
-        <div className="bg-white rounded-3xl shadow-xl grid grid-cols-3 divide-x divide-[var(--color-border)] overflow-hidden">
-          <div className="text-center py-6 sm:py-8">
-            <p className="text-2xl sm:text-3xl font-bold">500+</p>
-            <p className="text-sm text-[var(--color-text-muted)] mt-1">Cars available</p>
+      <section className="search-wrap" aria-label="Find a rental car">
+        <form className="home-search" onSubmit={search}>
+          <div className="search-fields">
+            <label className="search-field"><Icon name="pin" /><span><span className="field-label">Pick-up location</span><select value={location} onChange={(e) => setLocation(e.target.value)}><option value="">Where are you headed?</option>{['Johannesburg', 'Pretoria', 'Cape Town', 'Durban'].map((city) => <option key={city}>{city}</option>)}</select></span></label>
+            <label className="search-field"><Icon name="calendar" /><span><span className="field-label">Pick-up date</span><input type="date" min={today()} value={pickupDate} onChange={(e) => { setPickupDate(e.target.value); if (returnDate && returnDate <= e.target.value) setReturnDate(''); setDateError(''); }} aria-describedby={dateError ? 'home-date-error' : undefined} /></span></label>
+            <label className="search-field"><Icon name="calendar" /><span><span className="field-label">Return date</span><input type="date" min={nextDate(pickupDate || today())} value={returnDate} onChange={(e) => { setReturnDate(e.target.value); setDateError(''); }} aria-describedby={dateError ? 'home-date-error' : undefined} /></span></label>
+            <button type="submit" className="btn-primary !rounded-xl !min-h-14"><Icon name="search" size={17} />Find my ride</button>
           </div>
-          <div className="text-center py-6 sm:py-8">
-            <p className="text-2xl sm:text-3xl font-bold">10k+</p>
-            <p className="text-sm text-[var(--color-text-muted)] mt-1">Happy renters</p>
-          </div>
-          <div className="text-center py-6 sm:py-8">
-            <p className="text-2xl sm:text-3xl font-bold">4.8★</p>
-            <p className="text-sm text-[var(--color-text-muted)] mt-1">Average rating</p>
-          </div>
-        </div>
+          {dateError && <p id="home-date-error" role="alert" className="notice-error mt-4">{dateError}</p>}
+        </form>
+        <div className="search-note"><span><Icon name="check" size={13} />Clear daily pricing</span><span><Icon name="check" size={13} />Easy online booking</span><span><Icon name="check" size={13} />Real people, ready to help</span></div>
       </section>
 
-      {/* Featured Cars */}
-      {featuredCars.length > 0 && (
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
-          <div className="flex items-end justify-between mb-10">
-            <div>
-              <h2 className="text-2xl sm:text-3xl font-bold mb-2">Featured cars</h2>
-              <p className="text-[var(--color-text-muted)]">A few of our most popular rides right now</p>
-            </div>
-            <Link to="/browse" className="text-[var(--color-accent)] font-semibold hover:underline hidden sm:block">
-              View all cars →
-            </Link>
-          </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {featuredCars.map((car) => <CarCard key={car._id} car={car} />)}
-          </div>
-        </section>
-      )}
+      <div className="brand-strip"><p>A love for cars.<br />A taste for adventure.</p><div className="brand-names" aria-label="Automotive inspiration"><span>BMW</span><span>Mercedes-Benz</span><span>TOYOTA</span><span>Volkswagen</span><span>Audi</span><span>HYUNDAI</span></div></div>
 
-      {/* How it works — unchanged */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
-        <h2 className="text-2xl sm:text-3xl font-bold text-center mb-10 sm:mb-16">How it works</h2>
-        <div className="grid md:grid-cols-3 gap-10">
+      <section className="home-section">
+        <div className="section-heading"><div><p className="eyebrow">Different plans. The right car.</p><h2 className="section-title">What's your kind of journey?</h2></div><p className="page-intro !text-xs !max-w-64">A weekday essential or a weekend escape.<br />Make the drive part of the experience.</p></div>
+        <div className="category-grid">
           {[
-            { step: '01', title: 'Search', desc: 'Pick your location and dates to see available cars.' },
-            { step: '02', title: 'Book', desc: 'Choose your car and confirm your booking in seconds.' },
-            { step: '03', title: 'Drive', desc: "Pick up your car and hit the road. It's that simple." },
-          ].map((item) => (
-            <div key={item.step} className="text-center">
-              <span className="text-5xl font-bold text-[var(--color-accent)]/20">{item.step}</span>
-              <h3 className="text-xl font-semibold mt-2 mb-2">{item.title}</h3>
-              <p className="text-[var(--color-text-muted)]">{item.desc}</p>
-            </div>
-          ))}
+            { name: 'City essentials', copy: 'Make the everyday effortless.', image: 'sedan', to: '/browse?category=Sedan' },
+            { name: 'Room to roam', copy: 'More space. More possibilities.', image: 'suv', to: '/browse?category=SUV' },
+            { name: 'A quieter escape', copy: 'Discover a different kind of drive.', image: 'electric', to: '/browse?fuelType=Electric' },
+          ].map((category) => <Link key={category.name} to={category.to} className="category-card"><h3>{category.name}</h3><p>{category.copy}</p><span className="category-arrow"><Icon name="arrow-up-right" size={15} /></span><img src={`/collections/${category.image}.png`} alt="" loading="lazy" /></Link>)}
         </div>
       </section>
 
+      <section className="home-section !pt-2">
+        <div className="section-heading"><div><p className="eyebrow">The collection</p><h2 className="section-title">Meet your next set of keys.</h2><p className="page-intro">A few standout rides, ready for your next adventure.</p></div><Link to="/browse" className="btn-secondary !text-xs">View the full fleet <Icon name="arrow-up-right" size={15} /></Link></div>
+        {loading ? <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5" role="status" aria-label="Loading featured cars">{[1, 2, 3].map((n) => <div key={n} className="skeleton h-96" />)}</div> : error ? <div className="empty-state"><Icon name="car" size={34} /><h2>A short pit stop.</h2><p>{error}</p><button className="btn-secondary" onClick={() => setRetry(retry + 1)}>Try again <Icon name="arrow-right" size={15} /></button></div> : cars.length ? <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">{cars.map((car) => <CarCard key={car._id} car={car} />)}</div> : <div className="empty-state"><Icon name="car" size={34} /><h2>New journeys are on the way.</h2><p>There are no cars listed right now. Our team can help you plan your next rental.</p><Link to="/contact" className="btn-secondary">Talk to our team</Link></div>}
+      </section>
 
-    {/* FAQ */}
-    <section className="bg-white border-t border-[var(--color-border)]">
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
-        <h2 className="text-2xl sm:text-3xl font-bold text-center mb-8 sm:mb-12">Frequently asked questions</h2>
-        <div className="space-y-3">
-        {[
-            { q: 'What do I need to rent a car?', a: 'A valid driver\'s license, a form of ID, and a card for the security deposit.' },
-            { q: 'Can I cancel a booking?', a: 'Yes, bookings can be cancelled from your My Bookings page before pickup.' },
-            { q: 'Is there a mileage limit?', a: 'Most rentals include a generous daily mileage allowance — extra km are billed at checkout.' },
-            { q: 'What happens if I return the car late?', a: 'A grace period of one hour applies. After that, a late fee is charged per hour.' },
-        ].map((item, i) => (
-            <details key={i} className="group bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl px-5 py-4">
-            <summary className="flex items-center justify-between font-medium cursor-pointer list-none">
-                {item.q}
-                <span className="text-[var(--color-accent)] group-open:rotate-45 transition-transform text-xl">+</span>
-            </summary>
-            <p className="text-sm text-[var(--color-text-muted)] mt-3">{item.a}</p>
-            </details>
-        ))}
-        </div>
-    </div>
-    </section>
-
-      {/* Why Choose Us */}
-      <section className="bg-white border-y border-[var(--color-border)]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
-          <h2 className="text-2xl sm:text-3xl font-bold text-center mb-10 sm:mb-16">Why choose RoadWheels</h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
-            {[
-              { icon: '🛡️', title: 'Fully Insured', desc: 'Every rental is covered, so you can drive with peace of mind.' },
-              { icon: '⚡', title: 'Instant Booking', desc: 'No waiting for approval — book and go in minutes.' },
-              { icon: '💳', title: 'No Hidden Fees', desc: "The price you see is the price you pay. Always." },
-              { icon: '📍', title: 'Multiple Locations', desc: 'Pick up and drop off across major cities nationwide.' },
-            ].map((item) => (
-              <div key={item.title} className="text-center">
-                <div className="w-14 h-14 rounded-2xl bg-[var(--color-accent)]/10 flex items-center justify-center text-2xl mx-auto mb-4">
-                  {item.icon}
-                </div>
-                <h3 className="font-semibold mb-2">{item.title}</h3>
-                <p className="text-sm text-[var(--color-text-muted)]">{item.desc}</p>
-              </div>
-            ))}
-          </div>
+      <section className="experience-section" id="why-roadwheels">
+        <div className="experience-inner">
+          <div><p className="eyebrow">Less hassle. More open road.</p><h2 className="section-title">The journey should<br />start with a smile.<br /><span className="text-[#efb58d]">Not a stack of forms.</span></h2><p className="page-intro">We keep the details simple, so you can focus on the part that matters. Getting out there.</p><Link to="/browse" className="text-link !text-xs text-[#efb58d]">Find your next drive <Icon name="arrow-up-right" size={16} /></Link></div>
+          <div className="experience-features">{[
+            ['search', 'Your car, your choice', 'Compare vehicles, locations and daily rates to find a rental that fits your plans.'],
+            ['calendar', 'Dates that work for you', 'See availability before you book, with reserved dates checked for your chosen car.'],
+            ['key', 'Every detail in one place', 'Track your booking from request to return, right from your personal dashboard.'],
+            ['mail', 'A real team behind you', 'Questions about your next drive? Get in touch. We’re here to help with the details.'],
+          ].map(([icon, title, copy]) => <div key={title}><Icon name={icon} size={26} /><h3>{title}</h3><p>{copy}</p></div>)}</div>
         </div>
       </section>
 
-      {/* Testimonials */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
-        <h2 className="text-2xl sm:text-3xl font-bold text-center mb-10 sm:mb-16">What renters are saying</h2>
-        <div className="grid md:grid-cols-3 gap-6">
-          {[
-            { name: 'Thabo M.', quote: 'Booking took less than five minutes and the car was spotless. Way smoother than other rental apps I\'ve tried.', rating: 5 },
-            { name: 'Aisha K.', quote: 'Loved how transparent the pricing was — no surprise fees at pickup. Will definitely rent again.', rating: 5 },
-            { name: 'Sipho D.', quote: 'Great selection of cars and the whole process felt modern and easy to trust.', rating: 4 },
-          ].map((t) => (
-            <div key={t.name} className="bg-white border border-[var(--color-border)] rounded-2xl p-6">
-              <div className="text-[var(--color-accent)] mb-3">{'★'.repeat(t.rating)}{'☆'.repeat(5 - t.rating)}</div>
-              <p className="text-[var(--color-text-muted)] mb-4">"{t.quote}"</p>
-              <p className="font-semibold text-sm">{t.name}</p>
-            </div>
-          ))}
-        </div>
+      <section className="home-section" id="how-it-works">
+        <div className="section-heading"><div><p className="eyebrow">From screen to scenic route</p><h2 className="section-title">A little planning. A lot of possibility.</h2></div><span className="text-xs text-[var(--color-text-muted)]">Your next journey, in three simple steps.</span></div>
+        <div className="steps-grid">{[
+          ['01', 'Find your fit.', 'Choose your location and dates. Explore the cars and find the one that feels right.'],
+          ['02', 'Make it yours.', 'Sign in, review your rental details and send your request. Follow confirmation in your bookings.'],
+          ['03', 'Take the long way.', 'Once confirmed, collect your keys at the agreed location. The next chapter is all yours.'],
+        ].map(([step, title, copy]) => <div className="step-card" key={step}><div className="step-top"><span>{step}</span></div><h3>{title}</h3><p>{copy}</p></div>)}</div>
       </section>
 
-      {/* Operating Hours & Locations */}
-      <section className="bg-white border-y border-[var(--color-border)]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24 grid md:grid-cols-2 gap-12">
-          <div>
-            <h2 className="text-2xl sm:text-3xl font-bold mb-6">Operating hours</h2>
-            <div className="space-y-3">
-              {[
-                { day: 'Monday – Friday', hours: '07:00 – 18:00' },
-                { day: 'Saturday', hours: '08:00 – 14:00' },
-                { day: 'Sunday', hours: 'Closed' },
-                { day: 'Public Holidays', hours: '09:00 – 13:00' },
-              ].map((row) => (
-                <div key={row.day} className="flex justify-between py-2 border-b border-[var(--color-border)] text-sm">
-                  <span className="text-[var(--color-text-muted)]">{row.day}</span>
-                  <span className="font-medium">{row.hours}</span>
-                </div>
-              ))}
-            </div>
-            <p className="text-sm text-[var(--color-text-muted)] mt-4">
-              After-hours pickup/drop-off available on request for an additional fee.
-            </p>
-          </div>
-
-          <div>
-            <h2 className="text-2xl sm:text-3xl font-bold mb-6">Our locations</h2>
-            <div className="space-y-4">
-              {['Johannesburg', 'Pretoria', 'Cape Town', 'Durban'].map((city) => (
-                <div key={city} className="flex items-center gap-3 text-sm">
-                  <span className="w-2 h-2 rounded-full bg-[var(--color-accent)]" />
-                  <span className="font-medium">{city}</span>
-                  <span className="text-[var(--color-text-muted)]">— TBA</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Closing CTA */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24 text-center">
-        <h2 className="text-3xl md:text-4xl font-bold mb-4">Ready to hit the road?</h2>
-        <p className="text-[var(--color-text-muted)] mb-8 max-w-md mx-auto">
-          Browse our full fleet and find the perfect car for your next trip.
-        </p>
-        <Link
-          to="/browse"
-          className="inline-block px-8 py-4 rounded-full bg-[var(--color-accent)] text-white font-semibold text-lg hover:bg-[var(--color-accent-hover)] transition-all hover:scale-105 shadow-lg"
-        >
-          Browse Cars
-        </Link>
-      </section>
+      <section className="border-t border-[var(--color-border)] bg-white" id="faq"><div className="home-section faq-layout"><div><p className="eyebrow">A few things worth knowing</p><h2 className="section-title">Good questions.<br />Straight answers.</h2><p className="page-intro mt-5 !text-sm">A little clarity before you hit the road.</p><Link to="/contact" className="text-link mt-6 text-[var(--color-accent)] !text-xs">Still curious? Let's talk <Icon name="arrow-up-right" size={16} /></Link></div><div>{questions.map(([question, answer]) => <details key={question} className="faq-item"><summary>{question}<span aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div></div></section>
+      <section className="home-cta"><div><p className="eyebrow !mb-3">The best stories start with a drive</p><h2 className="section-title !text-3xl">Where to next?</h2></div><Link to="/browse" className="btn-primary">Let's find your ride <Icon name="arrow-up-right" size={17} /></Link></section>
     </div>
   );
-};
-
-export default Home;
+}

@@ -4,8 +4,14 @@ const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
-    const stored = localStorage.getItem('user');
-    return stored ? JSON.parse(stored) : null;
+    try {
+      const stored = JSON.parse(localStorage.getItem('user') || 'null');
+      return localStorage.getItem('token') && stored && typeof stored === 'object' && typeof stored.name === 'string' && typeof stored.email === 'string' ? stored : null;
+    } catch {
+      localStorage.removeItem('user');
+      localStorage.removeItem('token');
+      return null;
+    }
   });
 
   const login = (userData, token) => {

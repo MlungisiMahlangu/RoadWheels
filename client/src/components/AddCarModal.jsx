@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useId, useCallback } from 'react';
 import { api } from '../services/api';
-import ConfirmDialog from './ConfirmDialog';
 
 const CATEGORIES = ['Economy', 'Sedan', 'SUV', 'Hatchback', 'Bakkies', 'Minivan (MPV)', 'Truck', 'Luxury'];
 
 const AddCarModal = ({ car, onClose, onSaved }) => {
   const isEditing = !!car;
+  const id = useId();
+  const dialogRef = useRef(null);
+  const submitState = useRef('idle');
 
   const [form, setForm] = useState({
     brand: car?.brand || '',
@@ -27,10 +29,69 @@ const AddCarModal = ({ car, onClose, onSaved }) => {
   const [submitting, setSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
+  const handleClose = useCallback(() => {
+    if (submitState.current !== 'submitting') onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    const focusable = () => [...dialog.querySelectorAll('a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])')];
+    const handleKey = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        handleClose();
+      }
+      if (event.key === 'Tab') {
+        const elements = focusable();
+        const first = elements[0];
+        const last = elements[elements.length - 1];
+        if (!first) {
+          event.preventDefault();
+          dialog.focus();
+        } else if (!dialog.contains(document.activeElement) || document.activeElement === dialog) {
+          event.preventDefault();
+          (event.shiftKey ? last : first).focus();
+        } else if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    const containFocus = (event) => {
+      if (dialog.isConnected && !dialog.contains(event.target)) (focusable()[0] || dialog).focus();
+    };
+    document.addEventListener('keydown', handleKey);
+    document.addEventListener('focusin', containFocus);
+    return () => {
+      document.removeEventListener('keydown', handleKey);
+      document.removeEventListener('focusin', containFocus);
+    };
+  }, [handleClose]);
+
+  useEffect(() => {
+    const previous = document.activeElement;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    (dialogRef.current.querySelector('input') || dialogRef.current).focus();
+    return () => {
+      document.body.style.overflow = overflow;
+      if (previous?.isConnected) previous.focus();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (showSuccess) dialogRef.current?.focus();
+  }, [showSuccess]);
+
   const update = (key) => (e) => setForm({ ...form, [key]: e.target.value });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitState.current !== 'idle') return;
+    submitState.current = 'submitting';
     setError('');
     setSubmitting(true);
     try {
@@ -49,18 +110,17 @@ const AddCarModal = ({ car, onClose, onSaved }) => {
       } else {
         await api.createCar(payload);
       }
-      setShowSuccess(true);
     } catch (err) {
-      setError(err.message);
-    } finally {
+      submitState.current = 'idle';
+      setError(err.message || 'Unable to save this car. Please try again.');
       setSubmitting(false);
+      return;
     }
-  };
-
-  const handleSuccessClose = () => {
-    setShowSuccess(false);
+    submitState.current = 'saved';
+    setSubmitting(false);
+    setShowSuccess(true);
+    // Refresh now; onSaved may unmount us, and Done must not trigger another save/refresh.
     onSaved();
-    onClose();
   };
 
   const title = isEditing ? 'Edit Car' : 'Add New Car';
@@ -72,120 +132,117 @@ const AddCarModal = ({ car, onClose, onSaved }) => {
     : `${form.brand} ${form.name} has been added to your fleet.`;
 
   return (
-    <>
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6" onClick={onClose}>
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 sm:p-6" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold">{title}</h2>
-            <button onClick={onClose} className="text-2xl leading-none text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
-              ×
-            </button>
-          </div>
-
-          {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Brand" value={form.brand} onChange={update('brand')} required />
-              <Field label="Model" value={form.name} onChange={update('name')} required />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1.5">Description</label>
-              <textarea
-                value={form.description}
-                onChange={update('description')}
-                required
-                rows={3}
-                className="w-full border border-[var(--color-border)] rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-              <Field label="Price/day (R)" type="number" value={form.pricePerDay} onChange={update('pricePerDay')} required />
-              <Field label="Seats" type="number" value={form.seats} onChange={update('seats')} required />
-              <Field label="Year" type="number" value={form.year} onChange={update('year')} required />
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-              <Select label="Category" value={form.category} onChange={update('category')} options={CATEGORIES} />
-              <Select label="Transmission" value={form.transmission} onChange={update('transmission')} options={['Manual', 'Automatic']} />
-              <Select label="Fuel Type" value={form.fuelType} onChange={update('fuelType')} options={['Petrol', 'Diesel', 'Electric', 'Hybrid']} />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Color" value={form.color} onChange={update('color')} required />
-              <Field label="Location" value={form.location} onChange={update('location')} required />
-            </div>
-
-            <Field label="Mileage (km)" type="number" value={form.mileage} onChange={update('mileage')} />
-
-            <Field
-              label="Image URLs (comma-separated)"
-              value={form.images}
-              onChange={update('images')}
-              placeholder="https://... , https://..."
-            />
-            <Field
-              label="Features (comma-separated)"
-              value={form.features}
-              onChange={update('features')}
-              placeholder="Bluetooth, Cruise Control, Sunroof"
-            />
-
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 py-3 rounded-full border border-[var(--color-border)] font-medium hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="flex-1 py-3 rounded-full bg-[var(--color-accent)] text-white font-semibold hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-50"
-              >
-                {submitting ? submittingLabel : buttonLabel}
-              </button>
-            </div>
-          </form>
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6" onClick={handleClose}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`${id}-title`}
+        aria-describedby={showSuccess ? `${id}-success` : undefined}
+        tabIndex={-1}
+        className="panel shadow-2xl w-full max-w-lg max-h-[90dvh] overflow-y-auto p-5 sm:p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-6">
+          <h2 id={`${id}-title`} className="text-xl font-bold">{showSuccess ? successTitle : title}</h2>
+          <button type="button" onClick={handleClose} disabled={submitting} aria-label="Close dialog" className="icon-button text-2xl leading-none text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-50">
+            ×
+          </button>
         </div>
-      </div>
 
-      <ConfirmDialog
-        open={showSuccess}
-        title={successTitle}
-        message={successMessage}
-        confirmLabel="Done"
-        cancelLabel=""
-        onConfirm={handleSuccessClose}
-        onCancel={handleSuccessClose}
-      />
-    </>
+        {showSuccess ? (
+          <>
+            <p id={`${id}-success`} className="text-sm text-[var(--color-text-muted)] leading-7 mb-6">{successMessage}</p>
+            <button type="button" onClick={handleClose} className="btn-primary w-full">Done</button>
+          </>
+        ) : (
+          <form onSubmit={handleSubmit} aria-busy={submitting}>
+            {error && <p className="notice-error mb-4" role="alert">{error}</p>}
+            {submitting && <p className="sr-only" role="status">{submittingLabel}</p>}
+            <fieldset disabled={submitting} className="min-w-0 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Brand" value={form.brand} onChange={update('brand')} required />
+                <Field label="Model" value={form.name} onChange={update('name')} required />
+              </div>
+
+              <div>
+                <label htmlFor={`${id}-description`} className="field-label">Description</label>
+                <textarea
+                  id={`${id}-description`}
+                  value={form.description}
+                  onChange={update('description')}
+                  required
+                  rows={3}
+                  className="input-field"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+                <Field label="Price/day (R)" type="number" value={form.pricePerDay} onChange={update('pricePerDay')} required />
+                <Field label="Seats" type="number" value={form.seats} onChange={update('seats')} required />
+                <Field label="Year" type="number" value={form.year} onChange={update('year')} required />
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+                <Select label="Category" value={form.category} onChange={update('category')} options={CATEGORIES} />
+                <Select label="Transmission" value={form.transmission} onChange={update('transmission')} options={['Manual', 'Automatic']} />
+                <Select label="Fuel Type" value={form.fuelType} onChange={update('fuelType')} options={['Petrol', 'Diesel', 'Electric', 'Hybrid']} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Color" value={form.color} onChange={update('color')} required />
+                <Field label="Location" value={form.location} onChange={update('location')} required />
+              </div>
+
+              <Field label="Mileage (km)" type="number" value={form.mileage} onChange={update('mileage')} />
+
+              <Field
+                label="Image URLs (comma-separated)"
+                value={form.images}
+                onChange={update('images')}
+                placeholder="https://... , https://..."
+              />
+              <Field
+                label="Features (comma-separated)"
+                value={form.features}
+                onChange={update('features')}
+                placeholder="Bluetooth, Cruise Control, Sunroof"
+              />
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={handleClose} disabled={submitting} className="btn-secondary flex-1">Cancel</button>
+                <button type="submit" disabled={submitting} className="btn-primary flex-1">
+                  {submitting ? submittingLabel : buttonLabel}
+                </button>
+              </div>
+            </fieldset>
+          </form>
+        )}
+      </div>
+    </div>
   );
 };
 
-const Field = ({ label, ...props }) => (
-  <div>
-    <label className="block text-sm font-medium mb-1.5">{label}</label>
-    <input
-      {...props}
-      className="w-full border border-[var(--color-border)] rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
-    />
-  </div>
-);
+const Field = ({ label, ...props }) => {
+  const id = useId();
+  return (
+    <div>
+      <label htmlFor={id} className="field-label">{label}</label>
+      <input {...props} id={id} className="input-field" />
+    </div>
+  );
+};
 
-const Select = ({ label, options, ...props }) => (
-  <div>
-    <label className="block text-sm font-medium mb-1.5">{label}</label>
-    <select
-      {...props}
-      className="w-full border border-[var(--color-border)] rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
-    >
-      {options.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-    </select>
-  </div>
-);
+const Select = ({ label, options, ...props }) => {
+  const id = useId();
+  return (
+    <div>
+      <label htmlFor={id} className="field-label">{label}</label>
+      <select {...props} id={id} className="input-field">
+        {options.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+      </select>
+    </div>
+  );
+};
 
 export default AddCarModal;

@@ -1,31 +1,30 @@
 const express = require('express');
 const Booking = require('../models/Booking');
-const  Car = require('../models/Car');
+const Car = require('../models/Car');
 const { protectedRoute, adminOnly } = require('../middleware/auth');
+const { getBusinessToday, validateBookingDates } = require('./bookingDates');
 
 const router = express.Router();
+const allowedTransitions = {
+    pending: ['confirmed', 'cancelled'],
+    confirmed: ['active', 'cancelled'],
+    active: ['completed'],
+    completed: [],
+    cancelled: [],
+};
 
-// Create a booking ( Logged in users only )
+// Create a booking ( Logged in customers only )
 router.post('/', protectedRoute, async (req, res) => {
     try{
-        const { carId, pickupDate , returnDate } = req.body;
+        if (req.user.role === 'admin') {
+            return res.status(403).json({ message: 'Admin accounts cannot create bookings' });
+        }
+        const { carId, pickupDate, returnDate } = req.body || {};
+        const { pickup, returnD, error } = validateBookingDates(pickupDate, returnDate);
+        if (error) return res.status(400).json({ message: error });
+
         const car = await Car.findById(carId);
-
         if (!car) return res.status(404).json({ message: 'Car not found' });
-
-        const pickup = new Date(pickupDate);
-        const returnD = new Date(returnDate);
-
-        if( pickup >= returnD){
-            return res.status(400).json({ message: 'Return date must be after pickup date' });
-        }
-
-        // Same-day bookings are fine, but the rental can't start in the past
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        if(pickup < todayStart){
-            return res.status(400).json({ message: 'Pickup date cannot be in the past' });
-        }
 
         // Soft-deleted (removed) cars must not be bookable
         if(car.isAvailable === false){
@@ -58,16 +57,16 @@ router.post('/', protectedRoute, async (req, res) => {
 });
 
 // Auto-settle overdue bookings whenever they are fetched:
-// - confirmed/active rentals past their return date become completed
+// - confirmed/active rentals whose return day has arrived become completed
 // - pending requests whose rental window ended unapproved become cancelled
 const autoCompleteOverdue = async () => {
-    const now = new Date();
+    const today = getBusinessToday();
     await Booking.updateMany(
-        { status: { $in: ['confirmed', 'active'] }, returnDate: { $lt: now } },
+        { status: { $in: ['confirmed', 'active'] }, returnDate: { $lte: today } },
         { $set: { status: 'completed' } }
     );
     await Booking.updateMany(
-        { status: 'pending', returnDate: { $lt: now } },
+        { status: 'pending', returnDate: { $lte: today } },
         { $set: { status: 'cancelled' } }
     );
 };
@@ -97,15 +96,15 @@ router.get('/', protectedRoute, adminOnly, async (req, res) => {
 // Update a booking status (for admin only)
 router.put('/:id/status', protectedRoute, adminOnly, async (req, res) => {
     try{
-        const { status } = req.body;
+        const { status } = req.body || {};
         const booking = await Booking.findById(req.params.id);
         if(!booking) return res.status(404).json({ message: 'Booking not found' });
 
-        const now = new Date();
+        const today = getBusinessToday();
 
         // Once the rental window has ended the status is final —
         // settle the booking to its terminal state and refuse the change
-        if(booking.returnDate < now){
+        if(booking.returnDate <= today){
             const terminal = booking.status === 'pending' ? 'cancelled' : 'completed';
             if(['pending', 'confirmed', 'active'].includes(booking.status) && booking.status !== terminal){
                 booking.status = terminal;
@@ -114,9 +113,13 @@ router.put('/:id/status', protectedRoute, adminOnly, async (req, res) => {
             return res.status(400).json({ message: 'The rental period for this booking has already ended — its status can no longer be changed' });
         }
 
-        // A rental can only be marked active once the pickup date has arrived
-        if(status === 'active' && new Date(booking.pickupDate) > now){
-            return res.status(400).json({ message: 'This rental cannot start yet — the pickup date is still in the future' });
+        if (!(allowedTransitions[booking.status] || []).includes(status)) {
+            return res.status(400).json({ message: 'This booking status transition is not allowed' });
+        }
+
+        // Neither activation nor an early return may precede the pickup day.
+        if (['active', 'completed'].includes(status) && new Date(booking.pickupDate) > today) {
+            return res.status(400).json({ message: 'This rental cannot start or complete yet — the pickup date is still in the future' });
         }
 
         booking.status = status;
@@ -139,6 +142,9 @@ router.put('/:id/cancel', protectedRoute, async (req, res) => {
 
         if(!['pending', 'confirmed'].includes(booking.status)){
             return res.status(400).json({ message: 'Only pending or confirmed bookings can be cancelled' });
+        }
+        if (new Date(booking.pickupDate) <= getBusinessToday()) {
+            return res.status(400).json({ message: 'Bookings can only be cancelled before the pickup date' });
         }
 
         booking.status = 'cancelled';

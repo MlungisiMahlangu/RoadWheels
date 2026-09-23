@@ -1,241 +1,99 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { today, nextDate, rentalDays, validRentalDates, formatDate } from '../services/rentalDates';
+import Icon from '../components/Icon';
 
-const CarDetail = () => {
+export default function CarDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const { user } = useAuth();
-
   const [car, setCar] = useState(null);
   const [activeImage, setActiveImage] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [pickupDate, setPickupDate] = useState('');
-  const [returnDate, setReturnDate] = useState('');
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
+  const [pickupDate, setPickupDate] = useState(params.get('pickupDate') || '');
+  const [returnDate, setReturnDate] = useState(params.get('returnDate') || '');
   const [bookedRanges, setBookedRanges] = useState([]);
+  const [availabilityState, setAvailabilityState] = useState('loading');
   const [reviews, setReviews] = useState([]);
+  const [reviewError, setReviewError] = useState(false);
+  const query = params.toString();
 
   useEffect(() => {
-    const fetchCar = async () => {
-      try {
-        const data = await api.getCar(id);
-        setCar(data);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchCar();
-    // Booked date ranges + reviews load independently so a slow review
-    // fetch never blocks the page
-    api.getCarAvailability(id).then(setBookedRanges).catch(() => {});
-    api.getCarReviews(id).then(setReviews).catch(() => {});
-  }, [id]);
+    const current = new URLSearchParams(query);
+    setPickupDate(current.get('pickupDate') || '');
+    setReturnDate(current.get('returnDate') || '');
+  }, [id, query]);
 
-  const days = pickupDate && returnDate
-    ? Math.max(1, Math.ceil((new Date(returnDate) - new Date(pickupDate)) / (1000 * 60 * 60 * 24)))
-    : 0;
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError('');
+    setCar(null);
+    setActiveImage(0);
+    setBookedRanges([]);
+    setReviews([]);
+    setReviewError(false);
+    setAvailabilityState('loading');
+    api.getCar(id).then((data) => { if (active) setCar(data); })
+      .catch((err) => { if (active) setError(err.message); })
+      .finally(() => { if (active) setLoading(false); });
+    api.getCarAvailability(id).then((data) => { if (active) { setBookedRanges(data); setAvailabilityState('ready'); } })
+      .catch(() => { if (active) setAvailabilityState('error'); });
+    api.getCarReviews(id).then((data) => { if (active) setReviews(data); })
+      .catch(() => { if (active) setReviewError(true); });
+    return () => { active = false; };
+  }, [id, retry]);
+
+  const days = rentalDays(pickupDate, returnDate);
+  const valid = validRentalDates(pickupDate, returnDate);
+  const available = valid && !bookedRanges.some((booking) => new Date(pickupDate) < new Date(booking.returnDate) && new Date(returnDate) > new Date(booking.pickupDate));
   const total = days * (car?.pricePerDay || 0);
-
-  // Do the selected dates clash with an existing pending/confirmed/active booking?
-  const datesAvailable = () => {
-    if (!pickupDate || !returnDate) return true;
-    const pickup = new Date(pickupDate);
-    const returnD = new Date(returnDate);
-    return !bookedRanges.some(
-      (b) => pickup < new Date(b.returnDate) && returnD > new Date(b.pickupDate)
-    );
-  };
-  const available = datesAvailable();
-
-  const today = new Date().toISOString().split('T')[0];
-
-  const handleBook = () => {
-    if (!user) return navigate('/login');
-    if (user.role === 'admin') return; // admins can't book
-    navigate(`/book/${car._id}`, { state: { pickupDate, returnDate } });
+  const selection = new URLSearchParams({ pickupDate, returnDate });
+  const canBook = valid && available && availabilityState === 'ready' && car?.isAvailable !== false && user?.role !== 'admin';
+  const handleBook = (event) => {
+    event.preventDefault();
+    if (canBook) navigate(`/book/${id}?${selection}`);
   };
 
-  if (loading) return <div className="max-w-7xl mx-auto px-4 sm:px-6 py-24 text-center">Loading...</div>;
-  if (!car) return <div className="max-w-7xl mx-auto px-4 sm:px-6 py-24 text-center">Car not found.</div>;
+  if (loading) return <div className="page-shell" role="status" aria-label="Loading car details"><div className="skeleton mb-7 h-12 w-2/3" /><div className="grid lg:grid-cols-[1.5fr_1fr] gap-8"><div className="skeleton h-96" /><div className="skeleton h-96" /></div></div>;
+  if (error || !car) return <div className="page-shell"><div className="empty-state" role="alert"><Icon name="car" size={40} /><h1 className="page-title !text-3xl">We couldn't find this drive.</h1><p>{error || 'This car may no longer be listed.'}</p><div className="flex flex-wrap justify-center gap-3"><button className="btn-secondary" onClick={() => setRetry(retry + 1)}>Try again</button><Link to="/browse" className="btn-primary">Explore other cars</Link></div></div></div>;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12 grid lg:grid-cols-[1.4fr_1fr] gap-8 lg:gap-12">
-      {/* Left: gallery + details */}
-      <div>
-        <div className="rounded-2xl overflow-hidden aspect-[16/10] mb-3">
-          <img src={car.images?.[activeImage] || '/placeholder-car.png'} alt={car.name} className="w-full h-full object-cover" />
-        </div>
-        <div className="flex gap-3 mb-8 overflow-x-auto pb-1">
-          {car.images?.map((img, i) => (
-            <button
-              key={i}
-              onClick={() => setActiveImage(i)}
-              className={`w-20 h-16 rounded-lg overflow-hidden border-2 transition-colors shrink-0 ${
-                activeImage === i ? 'border-[var(--color-accent)]' : 'border-transparent'
-              }`}
-            >
-              <img src={img} alt="" className="w-full h-full object-cover" />
-            </button>
-          ))}
+    <div className="page-shell">
+      <nav className="breadcrumb" aria-label="Breadcrumb"><Link to="/">Home</Link><span>/</span><Link to={`/browse${valid ? `?${selection}` : ''}`}>The collection</Link><span>/</span><span className="text-[var(--color-text)]">{car.brand} {car.name}</span></nav>
+      <div className="mb-8"><p className="eyebrow">{car.category} · {car.year}</p><h1 className="page-title !mb-3">{car.brand} {car.name}</h1><div className="flex flex-wrap items-center gap-4 text-xs text-[var(--color-text-muted)]"><span className="inline-flex items-center gap-1.5"><Icon name="pin" size={14} />{car.location}</span><span>{car.transmission} transmission</span>{car.rating > 0 && <a href="#car-reviews" className="inline-flex items-center gap-1.5"><Icon name="star" size={14} className="text-[var(--color-accent)]" />{car.rating.toFixed(1)}<span>· {reviews.length} review{reviews.length !== 1 ? 's' : ''}</span></a>}</div></div>
+      <div className="detail-layout">
+        <div className="min-w-0">
+          <div className="relative mb-3 overflow-hidden rounded-3xl bg-[var(--color-soft)] aspect-[16/11]"><img src={car.images?.[activeImage] || '/placeholder-car.svg'} alt={`${car.brand} ${car.name}, view ${activeImage + 1}`} onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/placeholder-car.svg'; }} className="h-full w-full object-cover" /><span className="car-badge">Your next adventure</span></div>
+          {car.images?.length > 1 && <div className="flex gap-3 overflow-x-auto pb-2 mb-7">{car.images.map((image, index) => <button key={index} onClick={() => setActiveImage(index)} aria-label={`View photo ${index + 1}`} aria-pressed={activeImage === index} className={`h-16 w-24 shrink-0 overflow-hidden rounded-xl border-2 ${activeImage === index ? 'border-[var(--color-accent)]' : 'border-transparent'}`}><img src={image} alt="" className="w-full h-full object-cover" /></button>)}</div>}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-7">{[['settings', 'Transmission', car.transmission], ['fuel', 'Fuel type', car.fuelType], ['users', 'Seats', `${car.seats} people`], ['car', 'Colour', car.color || 'Not specified']].map(([icon, label, value]) => <div className="panel !rounded-2xl p-4" key={label}><Icon name={icon} size={19} className="mb-3 text-[var(--color-accent)]" /><p className="text-[10px] text-[var(--color-text-muted)] mb-1.5">{label}</p><p className="font-medium text-xs">{value}</p></div>)}</div>
+          <section className="py-5"><h2 className="text-2xl font-semibold mb-4">A little about your drive.</h2><p className="text-sm leading-8 text-[var(--color-text-muted)]">{car.description || `Explore ${car.location} and beyond in the ${car.brand} ${car.name}. Choose your dates to plan your rental.`}</p>{car.mileage != null && <p className="text-xs text-[var(--color-text-muted)] mt-4">Odometer · {car.mileage.toLocaleString('en-ZA')} km</p>}</section>
+          {car.features?.length > 0 && <section className="py-6 border-t border-[var(--color-border)] mt-4"><h2 className="text-xl font-semibold mb-5">The good details.</h2><div className="grid sm:grid-cols-2 gap-4">{car.features.map((feature) => <span key={feature} className="flex items-center gap-3 text-xs"><Icon name="check" size={15} className="text-[var(--color-accent)]" />{feature}</span>)}</div></section>}
+          <section id="car-reviews" className="border-t border-[var(--color-border)] mt-6 pt-7"><h2 className="text-xl font-semibold mb-5">From the driver's seat.{reviews.length > 0 && <span className="ml-2 text-sm font-normal text-[var(--color-text-muted)]">({reviews.length})</span>}</h2>{reviewError ? <p className="text-sm text-[var(--color-text-muted)]">Reviews couldn't be loaded. <button className="underline" onClick={() => setRetry(retry + 1)}>Try again</button></p> : !reviews.length ? <p className="text-sm leading-7 text-[var(--color-text-muted)]">No reviews yet. Renters can share their experience after a completed trip.</p> : <div className="space-y-4">{reviews.map((review) => <article key={review._id} className="panel p-5"><div className="flex items-center justify-between gap-3 mb-3"><div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-full bg-[var(--color-soft)] font-medium text-xs">{review.user?.name?.[0]?.toUpperCase() || 'R'}</div><div><p className="text-xs font-semibold">{review.user?.name || 'RoadWheels renter'}</p><p className="mt-1 text-[10px] text-[var(--color-text-muted)]">{formatDate(review.createdAt)}</p></div></div><span className="flex items-center gap-1 text-xs text-[var(--color-accent)]" aria-label={`${review.rating} out of 5 stars`}><Icon name="star" size={14} />{review.rating}/5</span></div>{review.comment && <p className="text-xs leading-7 text-[var(--color-text-muted)]">{review.comment}</p>}</article>)}</div>}</section>
         </div>
 
-        <h1 className="text-2xl sm:text-3xl font-bold mb-1">{car.brand} {car.name}</h1>
-        <div className="flex items-center gap-3 text-[var(--color-text-muted)] mb-6 flex-wrap">
-          <span>{car.year} · {car.location}</span>
-          <span className="px-2.5 py-0.5 bg-gray-100 rounded-full text-xs font-medium">{car.category}</span>
-          {car.rating > 0 && (
-            <span className="flex items-center gap-1 text-sm">
-              ★ <span className="font-medium text-[var(--color-text)]">{car.rating.toFixed(1)}</span>
-              <span className="text-xs">({reviews.length} review{reviews.length !== 1 ? 's' : ''})</span>
-            </span>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-          {[
-            { label: 'Transmission', value: car.transmission },
-            { label: 'Fuel Type', value: car.fuelType },
-            { label: 'Seats', value: car.seats },
-            { label: 'Color', value: car.color },
-            { label: 'Mileage', value: `${car.mileage?.toLocaleString() || 0} km` },
-          ].map((spec) => (
-            <div key={spec.label} className="bg-white border border-[var(--color-border)] rounded-xl p-4 text-center">
-              <p className="text-xs text-[var(--color-text-muted)] mb-1">{spec.label}</p>
-              <p className="font-semibold">{spec.value}</p>
-            </div>
-          ))}
-        </div>
-
-        <h2 className="font-semibold text-lg mb-3">About this car</h2>
-        <p className="text-[var(--color-text-muted)] mb-8">{car.description}</p>
-
-        {car.features?.length > 0 && (
-          <>
-            <h2 className="font-semibold text-lg mb-3">Features</h2>
-            <div className="flex flex-wrap gap-2 mb-8">
-              {car.features.map((f) => (
-                <span key={f} className="px-3 py-1.5 bg-gray-100 rounded-full text-sm">{f}</span>
-              ))}
-            </div>
-          </>
-        )}
-
-        {/* Reviews */}
-        <div className="border-t border-[var(--color-border)] pt-8">
-          <h2 className="font-semibold text-lg mb-5">Reviews {reviews.length > 0 && <span className="text-[var(--color-text-muted)] font-normal text-sm">({reviews.length})</span>}</h2>
-          {reviews.length === 0 ? (
-            <p className="text-sm text-[var(--color-text-muted)]">
-              No reviews yet — renters who complete a booking can rate this car.
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {reviews.map((r) => (
-                <div key={r._id} className="bg-white border border-[var(--color-border)] rounded-2xl p-5">
-                  <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-[var(--color-accent)]/10 flex items-center justify-center text-[var(--color-accent)] font-bold text-sm">
-                        {r.user?.name?.[0]?.toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="font-medium text-sm">{r.user?.name || 'Anonymous'}</p>
-                        <p className="text-xs text-[var(--color-text-muted)]">{new Date(r.createdAt).toLocaleDateString()}</p>
-                      </div>
-                    </div>
-                    <div className="text-yellow-400 text-sm">{'★'.repeat(r.rating)}<span className="text-gray-300">{'★'.repeat(5 - r.rating)}</span></div>
-                  </div>
-                  {r.comment && <p className="text-sm text-[var(--color-text-muted)]">{r.comment}</p>}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Right: sticky booking panel */}
-      <div className="lg:sticky lg:top-24 h-fit bg-white border border-[var(--color-border)] rounded-2xl p-6 shadow-sm">
-        <div className="flex items-baseline gap-1 mb-6">
-          <span className="text-2xl sm:text-3xl font-bold">R{car.pricePerDay}</span>
-          <span className="text-[var(--color-text-muted)]">/ day</span>
-        </div>
-
-        {car.isAvailable === false ? (
-          <div className="text-center py-6">
-            <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-              <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-              </svg>
-            </div>
-            <p className="text-sm font-medium text-[var(--color-text-muted)]">This car is no longer available for booking.</p>
-            <Link to="/browse" className="text-sm text-[var(--color-accent)] font-medium hover:underline mt-2 inline-block">
-              Browse other cars
-            </Link>
-          </div>
-        ) : user?.role === 'admin' ? (
-          <div className="text-center py-6">
-            <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-              <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-              </svg>
-            </div>
-            <p className="text-sm font-medium text-[var(--color-text-muted)]">Admin accounts cannot book cars.</p>
-            <Link to="/admin" className="text-sm text-[var(--color-accent)] font-medium hover:underline mt-2 inline-block">
-              Go to Dashboard
-            </Link>
-          </div>
-        ) : (
-          <>
-
-        <div className="space-y-4 mb-6">
-          <div>
-            <label className="block text-sm font-medium mb-1.5">Pickup date</label>
-            <input
-              type="date"
-              value={pickupDate}
-              onChange={(e) => setPickupDate(e.target.value)}
-              min={today}
-              className="w-full border border-[var(--color-border)] rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1.5">Return date</label>
-            <input
-              type="date"
-              value={returnDate}
-              onChange={(e) => setReturnDate(e.target.value)}
-              min={pickupDate || today}
-              className="w-full border border-[var(--color-border)] rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
-            />
-          </div>
-        </div>
-
-        {days > 0 && (
-          <div className="flex justify-between text-sm mb-4 pb-4 border-b border-[var(--color-border)]">
-            <span className="text-[var(--color-text-muted)]">{days} day{days > 1 ? 's' : ''} × R{car.pricePerDay}</span>
-            <span className="font-semibold">R{total}</span>
-          </div>
-        )}
-
-        {days > 0 && !available && (
-          <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm">
-            ⚠ These dates are already booked for this car. Please pick different dates.
-          </div>
-        )}
-
-        <button
-          onClick={handleBook}
-          disabled={!pickupDate || !returnDate || !available}
-          className="w-full py-3.5 rounded-full bg-[var(--color-accent)] text-white font-semibold hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {user ? 'Continue to Book' : 'Log in to Book'}
-        </button>
-          </>
-        )}
+        <aside className="panel booking-panel" aria-label="Reserve this car">
+          <p className="eyebrow !text-[9px] !mb-4">Your next drive starts here</p>
+          <p className="text-4xl font-semibold tracking-tight">R{car.pricePerDay.toLocaleString('en-ZA')}<span className="ml-2 text-xs font-normal tracking-normal text-[var(--color-text-muted)]">/ day</span></p>
+          <p className="mt-3 mb-7 text-xs text-[var(--color-text-muted)]">Choose your dates. Make it a journey.</p>
+          {car.isAvailable === false ? <div className="notice-error">This car is currently unavailable.<Link to="/browse" className="block underline mt-2">Explore other cars</Link></div> : user?.role === 'admin' ? <div className="panel bg-[var(--color-soft)] p-5 text-sm leading-7">Admin accounts manage the fleet and cannot make reservations.<Link to="/admin" className="block mt-3 text-[var(--color-accent)]">Go to your dashboard</Link></div> : <form onSubmit={handleBook}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-4"><div><label className="field-label" htmlFor="detail-pickup">Pick-up date</label><input id="detail-pickup" className="input-field !text-xs" type="date" required min={today()} value={pickupDate} onChange={(e) => { setPickupDate(e.target.value); if (returnDate && returnDate <= e.target.value) setReturnDate(''); }} /></div><div><label className="field-label" htmlFor="detail-return">Return date</label><input id="detail-return" className="input-field !text-xs" type="date" required min={nextDate(pickupDate || today())} value={returnDate} onChange={(e) => setReturnDate(e.target.value)} /></div></div>
+            <div className="mt-5 flex items-center gap-2 text-[11px] text-[var(--color-text-muted)]"><Icon name="pin" size={15} />Pick up in {car.location}</div>
+            {valid && <div className="my-6 border-y border-[var(--color-border)] py-5"><div className="flex justify-between gap-3 text-xs text-[var(--color-text-muted)]"><span>R{car.pricePerDay.toLocaleString('en-ZA')} × {days} day{days !== 1 ? 's' : ''}</span><span>R{total.toLocaleString('en-ZA')}</span></div><div className="mt-5 flex justify-between font-semibold text-sm"><span>Rental total</span><span>R{total.toLocaleString('en-ZA')}</span></div></div>}
+            {pickupDate && returnDate && !valid && <p className="notice-error mt-4" role="alert">Pick-up must be today or later. Return must be at least one day after pick-up.</p>}
+            {valid && !available && availabilityState === 'ready' && <p className="notice-error mt-4" role="alert">This car is already reserved for some of these dates. Please choose a different date range.</p>}
+            {availabilityState === 'error' && <div className="notice-error mt-4" role="alert">We couldn't check availability. <button type="button" className="underline font-medium" onClick={() => setRetry(retry + 1)}>Try again</button></div>}
+            <button type="submit" disabled={!canBook} className="btn-primary mt-6 w-full">{availabilityState === 'loading' ? 'Checking availability…' : user ? 'Review my booking' : 'Continue to sign in'}<Icon name="arrow-right" size={16} /></button>
+            <p className="mt-4 text-center text-[10px] leading-6 text-[var(--color-text-muted)]">{user ? 'Your request will be reviewed by our team.' : 'Sign in to continue. We’ll keep your selected dates.'}<br />No payment is collected on this website.</p>
+          </form>}
+          <div className="mt-6 border-t border-[var(--color-border)] pt-5 flex items-start gap-3"><Icon name="mail" size={17} className="text-[var(--color-accent)]" /><p className="text-[11px] leading-6 text-[var(--color-text-muted)]">A question before you book?<br /><Link to="/contact" className="font-medium text-[var(--color-text)] underline underline-offset-4">We're happy to help.</Link></p></div>
+        </aside>
       </div>
     </div>
   );
-};
-
-export default CarDetail;
+}

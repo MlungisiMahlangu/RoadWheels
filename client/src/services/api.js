@@ -10,10 +10,14 @@ const request = async (endpoint, options = {}) => {
         ...options.headers,
     };
 
-    const res = await fetch(`${API_URL}${endpoint}`, { ...options, headers });
+    let res;
+    try {
+        res = await fetch(`${API_URL}${endpoint}`, { ...options, headers });
+    } catch {
+        throw new Error('We couldn’t reach RoadWheels. Please check your connection and try again.');
+    }
 
-    // Expired/invalid session: clear credentials and send the user to login.
-    // Login/signup are excluded so bad-credential errors still display on the form.
+    // Login/signup must keep credential errors on the form.
     if (res.status === 401 && token && !endpoint.startsWith('/auth/login') && !endpoint.startsWith('/auth/signup')) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');

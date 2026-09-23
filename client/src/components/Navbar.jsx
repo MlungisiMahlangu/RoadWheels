@@ -1,151 +1,78 @@
-import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Logo from './Logo';
+import Icon from './Icon';
 import ConfirmDialog from './ConfirmDialog';
 
-const Navbar = () => {
+export default function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showLogout, setShowLogout] = useState(false);
   const menuRef = useRef(null);
+  const mobileRef = useRef(null);
 
-  // Close avatar dropdown when clicking outside
   useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setMenuOpen(false);
+    const close = (event) => {
+      if (event.type === 'keydown' && event.key !== 'Escape') return;
+      if (event.type === 'keydown' || !menuRef.current?.contains(event.target)) setMenuOpen(false);
+      if (event.type === 'keydown') {
+        setMobileOpen(false);
+        if (mobileOpen) mobileRef.current?.focus();
+        else menuRef.current?.querySelector('button')?.focus();
       }
     };
-    if (menuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+    if (menuOpen || mobileOpen) {
+      document.addEventListener('pointerdown', close);
+      document.addEventListener('keydown', close);
     }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [menuOpen]);
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', close); };
+  }, [menuOpen, mobileOpen]);
 
-  const handleLogout = () => {
-    setShowLogout(false);
-    setMenuOpen(false);
-    setMobileOpen(false);
-    logout();
-    navigate('/');
-  };
-
-  // Shared between desktop links and the mobile hamburger menu
-  const navLinks = [
+  const links = [
+    { to: '/', label: 'Home' },
+    { to: '/browse', label: 'Explore cars' },
     ...(user ? [{ to: user.role === 'admin' ? '/admin' : '/dashboard', label: 'Dashboard' }] : []),
-    { to: '/browse', label: 'Browse Cars' },
-    user?.role === 'admin'
-      ? { to: '/admin?tab=messages', label: 'Messages' }
-      : { to: '/contact', label: 'Contact' },
-    ...(user && user.role !== 'admin' ? [{ to: '/my-bookings', label: 'My Bookings' }] : []),
+    { to: '/contact', label: 'Contact' },
   ];
+  const closeMenus = () => { setMenuOpen(false); setMobileOpen(false); };
 
   return (
     <>
-      <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-[var(--color-border)]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-[72px] flex items-center justify-between">
-          <Link to="/">
-            <Logo />
-          </Link>
-
-          {/* Desktop links */}
-          <div className="hidden md:flex items-center gap-8 font-medium">
-            {navLinks.map((l) => (
-              <Link key={l.label} to={l.to} className="hover:text-[var(--color-accent)] transition-colors">{l.label}</Link>
-            ))}
-          </div>
-
+      <header className="site-nav">
+        <div className="nav-inner">
+          <Link to="/" aria-label="RoadWheels home" onClick={closeMenus}><Logo className="h-7 sm:h-10" /></Link>
+          <nav aria-label="Main navigation" className="nav-links">
+            {links.map(({ to, label }) => <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>{label}</NavLink>)}
+          </nav>
           <div className="flex items-center gap-2 sm:gap-4">
             {user ? (
               <div className="relative" ref={menuRef}>
-                <button
-                  onClick={() => { setMenuOpen((o) => !o); setMobileOpen(false); }}
-                  className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-full border border-[var(--color-border)] hover:bg-gray-50 transition-colors"
-                >
-                  <div className="w-7 h-7 rounded-full bg-[var(--color-accent)]/10 flex items-center justify-center text-[var(--color-accent)] font-bold text-xs">
-                    {user.name?.[0]?.toUpperCase()}
-                  </div>
-                  <span className="hidden sm:inline text-sm font-medium">{user.name?.split(' ')[0]}</span>
+                <button className="flex items-center gap-2 rounded-full border border-[var(--color-border)] py-1.5 pl-1.5 pr-3 text-xs" aria-expanded={menuOpen} aria-controls="account-menu" aria-label="Open account menu" onClick={() => { setMenuOpen(!menuOpen); setMobileOpen(false); }}>
+                  <span className="flex size-8 items-center justify-center rounded-full bg-[var(--color-soft)] font-semibold">{user.name?.[0]?.toUpperCase()}</span>
+                  <span className="hidden sm:block max-w-24 truncate">{user.name?.split(' ')[0]}</span><Icon name="chevron-down" size={14} />
                 </button>
-
-                {menuOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white border border-[var(--color-border)] rounded-xl shadow-lg overflow-hidden z-50">
-                    {user.role !== 'admin' && (
-                      <Link to="/profile" onClick={() => setMenuOpen(false)} className="block px-4 py-2.5 text-sm hover:bg-gray-50">My Profile</Link>
-                    )}
-                    <button onClick={() => setShowLogout(true)} className="w-full text-left px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 border-t border-[var(--color-border)]">
-                      Log out
-                    </button>
-                  </div>
-                )}
+                {menuOpen && <nav id="account-menu" aria-label="Account menu" className="absolute right-0 top-full mt-3 w-56 rounded-2xl border border-[var(--color-border)] bg-white p-2 shadow-xl">
+                  <p className="px-3 py-2 text-[10px] uppercase tracking-widest text-[var(--color-text-muted)]">Your RoadWheels</p>
+                  {(user.role === 'admin' ? [['/admin', 'grid', 'Admin dashboard']] : [['/dashboard', 'grid', 'Overview'], ['/my-bookings', 'calendar', 'My bookings'], ['/profile', 'user', 'My profile']]).map(([to, icon, label]) => <Link key={to} to={to} onClick={closeMenus} className="flex items-center gap-3 rounded-lg px-3 py-3 text-xs hover:bg-[var(--color-soft)]"><Icon name={icon} size={16} />{label}</Link>)}
+                  <button className="mt-1 flex w-full items-center gap-3 border-t border-[var(--color-border)] px-3 py-3 text-xs text-red-700" onClick={() => { closeMenus(); setShowLogout(true); }}><Icon name="logout" size={16} />Log out</button>
+                </nav>}
               </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <Link to="/login" className="hidden sm:block px-4 py-2 font-medium hover:text-[var(--color-accent)] transition-colors">Log in</Link>
-                <Link to="/signup" className="px-4 py-2 rounded-full bg-[var(--color-accent)] text-white font-medium text-sm sm:text-base hover:bg-[var(--color-accent-hover)] transition-colors">Sign up</Link>
-              </div>
-            )}
-
-            {/* Hamburger (mobile only) */}
-            <button
-              onClick={() => setMobileOpen((o) => !o)}
-              className="md:hidden p-2 -mr-2 rounded-lg hover:bg-gray-100 transition-colors"
-              aria-label="Toggle menu"
-            >
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                {mobileOpen ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-                )}
-              </svg>
-            </button>
+            ) : <>
+              <Link to="/login" className="hidden sm:inline text-xs font-medium hover:text-[var(--color-accent)]">Log in</Link>
+              <Link to="/signup" className="btn-dark shrink-0 whitespace-nowrap !min-h-10 !px-3 sm:!px-5 !py-2.5 !text-[11px]">Get started <Icon name="arrow-up-right" size={14} className="hidden sm:block" /></Link>
+            </>}
+            <button ref={mobileRef} className="icon-button md:!hidden" aria-label={mobileOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={mobileOpen} aria-controls="mobile-navigation" onClick={() => { setMobileOpen(!mobileOpen); setMenuOpen(false); }}><Icon name={mobileOpen ? 'close' : 'menu'} size={18} /></button>
           </div>
         </div>
-
-        {/* Mobile dropdown menu */}
-        {mobileOpen && (
-          <>
-            <div className="fixed inset-0 z-40 md:hidden" onClick={() => setMobileOpen(false)} />
-            <div className="absolute top-full left-0 right-0 z-50 md:hidden bg-white border-b border-[var(--color-border)] shadow-lg">
-              <div className="px-4 py-3 flex flex-col">
-                {navLinks.map((l) => (
-                  <Link
-                    key={l.label}
-                    to={l.to}
-                    onClick={() => setMobileOpen(false)}
-                    className="px-3 py-3 rounded-lg font-medium hover:bg-gray-50 hover:text-[var(--color-accent)] transition-colors"
-                  >
-                    {l.label}
-                  </Link>
-                ))}
-                {!user && (
-                  <div className="flex gap-3 pt-3 mt-2 border-t border-[var(--color-border)]">
-                    <Link to="/login" onClick={() => setMobileOpen(false)} className="flex-1 text-center py-2.5 rounded-full border border-[var(--color-border)] font-medium text-sm hover:bg-gray-50 transition-colors">Log in</Link>
-                    <Link to="/signup" onClick={() => setMobileOpen(false)} className="flex-1 text-center py-2.5 rounded-full bg-[var(--color-accent)] text-white font-medium text-sm hover:bg-[var(--color-accent-hover)] transition-colors">Sign up</Link>
-                  </div>
-                )}
-              </div>
-            </div>
-          </>
-        )}
-      </nav>
-
-      <ConfirmDialog
-        open={showLogout}
-        title="Log out"
-        message="Are you sure you want to log out? You'll need to sign in again to access your bookings."
-        confirmLabel="Log out"
-        cancelLabel="Stay"
-        variant="danger"
-        onConfirm={handleLogout}
-        onCancel={() => setShowLogout(false)}
-      />
+        {mobileOpen && <nav id="mobile-navigation" aria-label="Mobile navigation" className="border-t border-[var(--color-border)] bg-white px-5 py-4 md:hidden shadow-lg">
+          {links.map(({ to, label }) => <NavLink key={to} to={to} end={to === '/'} onClick={closeMenus} className={({ isActive }) => `block rounded-xl px-4 py-3.5 text-sm ${isActive ? 'bg-[var(--color-soft)] font-semibold' : ''}`}>{label}</NavLink>)}
+          <Link to={user ? user.role === 'admin' ? '/admin' : '/my-bookings' : '/login'} onClick={closeMenus} className="btn-secondary mt-3 w-full">{user ? user.role === 'admin' ? 'Admin workspace' : 'My bookings' : 'Log in to your account'}</Link>
+        </nav>}
+      </header>
+      <ConfirmDialog open={showLogout} title="Ready to log out?" message="Your bookings will be here when you return." confirmLabel="Log out" cancelLabel="Stay signed in" onCancel={() => setShowLogout(false)} onConfirm={() => { setShowLogout(false); logout(); navigate('/'); }} />
     </>
   );
-};
-
-export default Navbar;
+}

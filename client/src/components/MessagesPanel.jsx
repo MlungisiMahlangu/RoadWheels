@@ -1,37 +1,70 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 
 const MessagesPanel = ({ onRead }) => {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [selected, setSelected] = useState(null);
+  const [readErrors, setReadErrors] = useState({});
+  const [readingIds, setReadingIds] = useState([]);
+  const readsInFlight = useRef(new Set());
 
-  const fetchMessages = async () => {
-    setLoading(true);
+  useEffect(() => {
+    let current = true;
+    const fetchMessages = async () => {
+      setLoading(true);
+      setFetchError('');
+      try {
+        const data = await api.getContactMessages();
+        if (current) setMessages(data);
+      } catch (err) {
+        if (current) setFetchError(err.message || 'Unable to load messages. Please try again.');
+      } finally {
+        if (current) setLoading(false);
+      }
+    };
+    fetchMessages();
+    return () => { current = false; };
+  }, [loadAttempt]);
+
+  const markRead = async (msg) => {
+    const id = msg._id;
+    if (msg.isRead || readsInFlight.current.has(id)) return;
+    readsInFlight.current.add(id);
+    setReadingIds([...readsInFlight.current]);
+    setReadErrors((errors) => ({ ...errors, [id]: '' }));
     try {
-      const data = await api.getContactMessages();
-      setMessages(data);
+      await api.markMessageRead(id);
+    } catch (err) {
+      setReadErrors((errors) => ({ ...errors, [id]: err.message || 'Unable to mark this message as read. Please try again.' }));
+      return;
     } finally {
-      setLoading(false);
+      readsInFlight.current.delete(id);
+      setReadingIds([...readsInFlight.current]);
     }
+    setMessages((current) => current.map((message) => message._id === id ? { ...message, isRead: true } : message));
+    setSelected((current) => current?._id === id ? { ...current, isRead: true } : current);
+    onRead?.();
   };
 
-  useEffect(() => { fetchMessages(); }, []);
-
-  const openMessage = async (msg) => {
+  const openMessage = (msg) => {
     setSelected(msg);
-    if (!msg.isRead) {
-      await api.markMessageRead(msg._id);
-      fetchMessages();
-      onRead?.();
-    }
+    markRead(msg);
   };
 
-  if (loading) return <p className="text-center py-16">Loading...</p>;
+  if (loading) return <p className="panel text-center py-16 text-sm text-[var(--color-text-muted)]" role="status">Loading messages...</p>;
+  if (fetchError) return (
+    <div className="notice-error flex flex-wrap items-center justify-between gap-3" role="alert">
+      <p>{fetchError}</p>
+      <button type="button" className="btn-secondary" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>Retry loading messages</button>
+    </div>
+  );
 
   return (
     <div className="grid md:grid-cols-[1fr_1.3fr] gap-6">
-      <div className={`bg-white border border-[var(--color-border)] rounded-2xl overflow-hidden divide-y divide-[var(--color-border)] max-h-[600px] overflow-y-auto ${selected ? 'hidden md:block' : ''}`}>
+      <div className={`panel overflow-hidden divide-y divide-[var(--color-border)] max-h-[600px] overflow-y-auto ${selected ? 'hidden md:block' : ''}`}>
         {messages.length === 0 ? (
           <p className="px-5 py-8 text-center text-sm text-[var(--color-text-muted)]">No messages yet.</p>
         ) : (
@@ -52,7 +85,7 @@ const MessagesPanel = ({ onRead }) => {
         )}
       </div>
 
-      <div className={`bg-white border border-[var(--color-border)] rounded-2xl p-6 ${selected ? '' : 'hidden md:block'}`}>
+      <div className={`panel p-6 ${selected ? '' : 'hidden md:block'}`}>
         {!selected ? (
           <p className="text-center text-sm text-[var(--color-text-muted)] py-16">Select a message to read it.</p>
         ) : (
@@ -72,9 +105,17 @@ const MessagesPanel = ({ onRead }) => {
             </div>
             <p className="text-sm text-[var(--color-text-muted)] whitespace-pre-wrap">{selected.message}</p>
 
+            {readingIds.includes(selected._id) && <p role="status" className="mt-4 text-sm text-[var(--color-text-muted)]">Marking as read...</p>}
+            {readErrors[selected._id] && (
+              <div className="notice-error mt-4" role="alert">
+                <p>{readErrors[selected._id]}</p>
+                <button type="button" onClick={() => markRead(selected)} disabled={readingIds.includes(selected._id)} className="btn-secondary mt-3">Retry marking as read</button>
+              </div>
+            )}
+
             <a
               href={`mailto:${selected.email}?subject=Re: Your message to RoadWheels`}
-              className="inline-block mt-6 px-5 py-2.5 rounded-full bg-[var(--color-accent)] text-white text-sm font-medium hover:bg-[var(--color-accent-hover)] transition-colors"
+              className="btn-primary mt-6"
             >
               Reply via Email
             </a>
