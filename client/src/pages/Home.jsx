@@ -53,7 +53,7 @@ export default function Home() {
         <div className="hero-shade" />
         <div className="hero-content">
           <p className="hero-kicker">South Africa, on your terms</p>
-          <h1 id="hero-heading" className="hero-title">Good drives.<br />Great stories.<br /><span>Your next chapter.</span></h1>
+          <h1 id="hero-heading" className="hero-title">Drive something<br /><span>worth remembering.</span></h1>
           <p className="hero-copy">The city, the coast, the long way home. Find the right car for wherever life takes you next.</p>
           <div className="hero-actions"><Link to="/browse" className="btn-primary">Explore the fleet <Icon name="arrow-up-right" size={17} /></Link><Link to="/#how-it-works" className="text-link !text-xs">How it works <Icon name="arrow-right" size={15} /></Link></div>
         </div>
