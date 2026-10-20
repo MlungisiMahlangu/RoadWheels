@@ -28,8 +28,16 @@ export default function Home() {
     let active = true;
     setLoading(true);
     setError('');
-    api.getCars('sort=rating').then((data) => { if (active) setCars(data.slice(0, 3)); })
-      .catch(() => { if (active) setError('We couldn’t load the collection just now. Please try again.'); })
+    api.getCars('sort=rating').then((data) => { 
+      if (active) {
+        const carsArray = Array.isArray(data) ? data : [];
+        setCars(carsArray.slice(0, 3)); 
+      }
+    })
+      .catch((err) => { 
+        console.error('Failed to fetch cars:', err);
+        if (active) setError("We couldn't load the collection just now. Please try again."); 
+      })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [retry]);
